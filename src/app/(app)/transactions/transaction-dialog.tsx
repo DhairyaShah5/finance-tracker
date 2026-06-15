@@ -36,6 +36,8 @@ import { createTransaction, updateTransaction, type TransactionInput } from "./a
 const NONE = "__none__";
 const today = () => new Date().toISOString().slice(0, 10);
 
+type Mode = "expense" | "income" | "transfer";
+
 export interface TxnLookups {
   accounts: AccountRow[];
   categories: CategoryRow[];
@@ -57,7 +59,8 @@ export function TransactionDialog({
   const router = useRouter();
   const [pending, start] = React.useTransition();
 
-  const [direction, setDirection] = React.useState<"outflow" | "inflow">("outflow");
+  const [mode, setMode] = React.useState<Mode>("expense");
+  const [transferDir, setTransferDir] = React.useState<"outflow" | "inflow">("outflow");
   const [date, setDate] = React.useState(today());
   const [amount, setAmount] = React.useState("");
   const [description, setDescription] = React.useState("");
@@ -68,11 +71,11 @@ export function TransactionDialog({
   const [debtorId, setDebtorId] = React.useState(NONE);
   const [notes, setNotes] = React.useState("");
 
-  // Hydrate form when opening.
   React.useEffect(() => {
     if (!open) return;
     if (existing) {
-      setDirection(existing.direction);
+      setMode(existing.is_transfer ? "transfer" : existing.direction === "inflow" ? "income" : "expense");
+      setTransferDir(existing.direction);
       setDate(existing.txn_date);
       setAmount(String(existing.amount));
       setDescription(existing.description);
@@ -83,7 +86,8 @@ export function TransactionDialog({
       setDebtorId(existing.debtor_id ?? NONE);
       setNotes(existing.notes ?? "");
     } else {
-      setDirection("outflow");
+      setMode("expense");
+      setTransferDir("outflow");
       setDate(today());
       setAmount("");
       setDescription("");
@@ -97,6 +101,7 @@ export function TransactionDialog({
   }, [open, existing, lookups.accounts]);
 
   function submit() {
+    const direction = mode === "transfer" ? transferDir : mode === "income" ? "inflow" : "outflow";
     const input: TransactionInput = {
       txn_date: date,
       account_id: accountId,
@@ -107,6 +112,7 @@ export function TransactionDialog({
       inflow_type_id: inflowTypeId === NONE ? null : inflowTypeId,
       whose_expense: whose as TransactionInput["whose_expense"],
       debtor_id: debtorId === NONE ? null : debtorId,
+      is_transfer: mode === "transfer",
       notes: notes || null,
     };
     start(async () => {
@@ -128,14 +134,19 @@ export function TransactionDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{existing ? "Edit transaction" : "Add transaction"}</DialogTitle>
-          <DialogDescription>Record money in or out of an account.</DialogDescription>
+          <DialogDescription>
+            {mode === "transfer"
+              ? "Move money between your own accounts — excluded from income & spending."
+              : "Record money in or out of an account."}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          <Tabs value={direction} onValueChange={(v) => setDirection(v as "outflow" | "inflow")}>
+          <Tabs value={mode} onValueChange={(v) => setMode(v as Mode)}>
             <TabsList className="w-full">
-              <TabsTrigger value="outflow" className="flex-1">Expense</TabsTrigger>
-              <TabsTrigger value="inflow" className="flex-1">Income</TabsTrigger>
+              <TabsTrigger value="expense" className="flex-1">Expense</TabsTrigger>
+              <TabsTrigger value="income" className="flex-1">Income</TabsTrigger>
+              <TabsTrigger value="transfer" className="flex-1">Transfer</TabsTrigger>
             </TabsList>
           </Tabs>
 
@@ -165,7 +176,7 @@ export function TransactionDialog({
               id="desc"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="e.g. Chipotle"
+              placeholder={mode === "transfer" ? "e.g. Chase → BofA" : "e.g. Chipotle"}
             />
           </div>
 
@@ -182,7 +193,7 @@ export function TransactionDialog({
               </Select>
             </div>
 
-            {direction === "outflow" ? (
+            {mode === "expense" ? (
               <div className="space-y-1.5">
                 <Label>Category</Label>
                 <Select value={categoryId} onValueChange={setCategoryId}>
@@ -195,7 +206,7 @@ export function TransactionDialog({
                   </SelectContent>
                 </Select>
               </div>
-            ) : (
+            ) : mode === "income" ? (
               <div className="space-y-1.5">
                 <Label>Income type</Label>
                 <Select value={inflowTypeId} onValueChange={setInflowTypeId}>
@@ -208,10 +219,21 @@ export function TransactionDialog({
                   </SelectContent>
                 </Select>
               </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Label>Direction</Label>
+                <Select value={transferDir} onValueChange={(v) => setTransferDir(v as "outflow" | "inflow")}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="outflow">Out of this account</SelectItem>
+                    <SelectItem value="inflow">Into this account</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             )}
           </div>
 
-          {direction === "outflow" ? (
+          {mode === "expense" ? (
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Whose expense</Label>
@@ -239,20 +261,7 @@ export function TransactionDialog({
                 </div>
               ) : null}
             </div>
-          ) : (
-            <div className="space-y-1.5">
-              <Label>Debtor (for reimbursements)</Label>
-              <Select value={debtorId} onValueChange={setDebtorId}>
-                <SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NONE}>Unassigned</SelectItem>
-                  {lookups.debtors.map((d) => (
-                    <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+          ) : null}
 
           <div className="space-y-1.5">
             <Label htmlFor="notes">Notes</Label>
@@ -265,7 +274,7 @@ export function TransactionDialog({
             Cancel
           </Button>
           <Button onClick={submit} disabled={pending}>
-            {pending ? "Saving…" : existing ? "Save changes" : "Add transaction"}
+            {pending ? "Saving…" : existing ? "Save changes" : "Add"}
           </Button>
         </DialogFooter>
       </DialogContent>

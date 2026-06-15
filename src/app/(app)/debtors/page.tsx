@@ -6,17 +6,11 @@ export const dynamic = "force-dynamic";
 export default async function DebtorsPage() {
   const { supabase, user } = await requireUser();
 
-  const [debtorsRes, txnsRes, inflowRes] = await Promise.all([
-    supabase.from("debtors").select("*").eq("user_id", user.id).order("name"),
-    supabase.from("transactions").select("*").eq("user_id", user.id),
-    supabase.from("inflow_types").select("*").eq("user_id", user.id),
-  ]);
+  const { data: debtors } = await supabase
+    .from("debtors")
+    .select("*")
+    .eq("user_id", user.id)
+    .order("amount", { ascending: false });
 
-  return (
-    <DebtorsView
-      debtors={debtorsRes.data ?? []}
-      transactions={txnsRes.data ?? []}
-      inflowTypes={inflowRes.data ?? []}
-    />
-  );
+  return <DebtorsView debtors={debtors ?? []} />;
 }

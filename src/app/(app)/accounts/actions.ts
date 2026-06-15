@@ -3,33 +3,24 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/database.types";
 import { ACCOUNT_TYPES } from "@/lib/defaults";
 
 const schema = z.object({
   name: z.string().trim().min(1, "Name is required."),
   bank: z.string().trim().min(1).optional(),
   type: z.enum(ACCOUNT_TYPES),
-  opening_balance: z.coerce.number(),
-  is_credit: z.boolean(),
+  // The desired CURRENT balance. We back-solve opening_balance so that
+  // opening_balance + Σ(signed transactions) == this value.
+  balance: z.coerce.number(),
   include_in_net_worth: z.boolean(),
-  display_order: z.coerce.number().int(),
 });
 
 export type AccountInput = z.input<typeof schema>;
 type ActionResult = { ok: boolean; error?: string };
 
-function normalize(data: z.output<typeof schema>) {
-  return {
-    name: data.name,
-    bank: data.bank?.trim() || "Other",
-    type: data.type,
-    opening_balance: data.opening_balance,
-    // Credit-card accounts are always credit, regardless of the checkbox.
-    is_credit: data.type === "credit_card" ? true : data.is_credit,
-    include_in_net_worth: data.include_in_net_worth,
-    display_order: data.display_order,
-  };
-}
+const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 async function authed() {
   const supabase = await createClient();
@@ -43,12 +34,23 @@ function revalidate() {
   for (const p of ["/accounts", "/"]) revalidatePath(p);
 }
 
-/** Postgres unique-violation -> friendly per-user "name taken" message. */
+/** Σ signed (inflow +, outflow −) over all of an account's transactions. */
+async function deltaFor(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+  accountId: string,
+): Promise<number> {
+  const { data } = await supabase
+    .from("transactions")
+    .select("direction, amount")
+    .eq("user_id", userId)
+    .eq("account_id", accountId);
+  return (data ?? []).reduce((s, t) => s + (t.direction === "inflow" ? t.amount : -t.amount), 0);
+}
+
 function isUniqueViolation(message: string): boolean {
   return /duplicate key|unique constraint|already exists/i.test(message);
 }
-
-/** Postgres FK restrict (account still referenced by transactions). */
 function isForeignKeyViolation(message: string): boolean {
   return /foreign key|violates foreign key constraint|still referenced/i.test(message);
 }
@@ -59,14 +61,25 @@ export async function createAccount(input: AccountInput): Promise<ActionResult> 
   const { supabase, user } = await authed();
   if (!user) return { ok: false, error: "Not signed in." };
 
-  const { error } = await supabase
+  const { count } = await supabase
     .from("accounts")
-    .insert({ user_id: user.id, ...normalize(parsed.data) });
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id);
+
+  const d = parsed.data;
+  // New account has no transactions, so opening_balance = desired balance.
+  const { error } = await supabase.from("accounts").insert({
+    user_id: user.id,
+    name: d.name,
+    bank: d.bank?.trim() || "Other",
+    type: d.type,
+    is_credit: d.type === "credit_card",
+    opening_balance: round2(d.balance),
+    include_in_net_worth: d.include_in_net_worth,
+    display_order: count ?? 0,
+  });
   if (error) {
-    if (isUniqueViolation(error.message)) {
-      return { ok: false, error: "An account with that name already exists." };
-    }
-    return { ok: false, error: error.message };
+    return { ok: false, error: isUniqueViolation(error.message) ? "An account with that name already exists." : error.message };
   }
   revalidate();
   return { ok: true };
@@ -78,16 +91,23 @@ export async function updateAccount(id: string, input: AccountInput): Promise<Ac
   const { supabase, user } = await authed();
   if (!user) return { ok: false, error: "Not signed in." };
 
+  const d = parsed.data;
+  const delta = await deltaFor(supabase, user.id, id);
   const { error } = await supabase
     .from("accounts")
-    .update(normalize(parsed.data))
+    .update({
+      name: d.name,
+      bank: d.bank?.trim() || "Other",
+      type: d.type,
+      is_credit: d.type === "credit_card",
+      // Back-solve so the displayed (opening + activity) equals the desired balance.
+      opening_balance: round2(d.balance - delta),
+      include_in_net_worth: d.include_in_net_worth,
+    })
     .eq("id", id)
     .eq("user_id", user.id);
   if (error) {
-    if (isUniqueViolation(error.message)) {
-      return { ok: false, error: "An account with that name already exists." };
-    }
-    return { ok: false, error: error.message };
+    return { ok: false, error: isUniqueViolation(error.message) ? "An account with that name already exists." : error.message };
   }
   revalidate();
   return { ok: true };
@@ -99,10 +119,12 @@ export async function deleteAccount(id: string): Promise<ActionResult> {
 
   const { error } = await supabase.from("accounts").delete().eq("id", id).eq("user_id", user.id);
   if (error) {
-    if (isForeignKeyViolation(error.message)) {
-      return { ok: false, error: "Account has transactions; reassign or delete them first." };
-    }
-    return { ok: false, error: error.message };
+    return {
+      ok: false,
+      error: isForeignKeyViolation(error.message)
+        ? "Account has transactions; reassign or delete them first."
+        : error.message,
+    };
   }
   revalidate();
   return { ok: true };

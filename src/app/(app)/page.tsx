@@ -3,10 +3,10 @@ import { Landmark, TrendingDown, TrendingUp, Users, Wallet } from "lucide-react"
 import { requireUser } from "@/lib/queries";
 import {
   buildMonthlySummaries,
-  runningBalance,
+  monthlyBudget,
   categoryTotals,
   accountActivity,
-  totalOwedToMe,
+  sumOwed,
   signed,
 } from "@/lib/calc";
 import { fmtMoney, fmtDate, hueColor } from "@/lib/format";
@@ -22,12 +22,12 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   const { supabase, user } = await requireUser();
 
-  const [settingsRes, txnsRes, accountsRes, categoriesRes, inflowRes] = await Promise.all([
+  const [settingsRes, txnsRes, accountsRes, categoriesRes, debtorsRes] = await Promise.all([
     supabase.from("settings").select("*").eq("user_id", user.id).single(),
     supabase.from("transactions").select("*").eq("user_id", user.id).order("txn_date", { ascending: true }),
     supabase.from("accounts").select("*").eq("user_id", user.id).order("display_order"),
     supabase.from("categories").select("*").eq("user_id", user.id),
-    supabase.from("inflow_types").select("*").eq("user_id", user.id),
+    supabase.from("debtors").select("*").eq("user_id", user.id),
   ]);
 
   // requireUser() guarantees a settings row, but stay defensive against a null.
@@ -35,16 +35,25 @@ export default async function DashboardPage() {
   const txns = txnsRes.data ?? [];
   const accounts = accountsRes.data ?? [];
   const categories = categoriesRes.data ?? [];
-  const inflowTypes = inflowRes.data ?? [];
+  const debtors = debtorsRes.data ?? [];
 
-  const summaries = buildMonthlySummaries(txns, settings);
-  const balance = runningBalance(txns, settings);
   const catTotals = categoryTotals(txns, categories);
   const acctActivity = accountActivity(txns, accounts);
-  const owed = totalOwedToMe(txns, inflowTypes);
+  const netWorth = acctActivity
+    .filter((a) => a.account.include_in_net_worth)
+    .reduce((s, a) => s + a.balance, 0);
+  const owed = sumOwed(debtors);
 
-  const totalIn = txns.filter((t) => t.direction === "inflow").reduce((s, t) => s + t.amount, 0);
-  const totalOut = txns.filter((t) => t.direction === "outflow").reduce((s, t) => s + t.amount, 0);
+  // Transfers between own accounts are excluded from income/spending.
+  const totalIn = txns.filter((t) => t.direction === "inflow" && !t.is_transfer).reduce((s, t) => s + t.amount, 0);
+  const totalOut = txns.filter((t) => t.direction === "outflow" && !t.is_transfer).reduce((s, t) => s + t.amount, 0);
+
+  // Accounts are the source of truth for "money I have". The balance trend
+  // chains to current net worth: opening seed = netWorth − net cash flow.
+  const summaries = buildMonthlySummaries(txns, {
+    monthlyBudget: monthlyBudget(settings),
+    openingBalance: netWorth - (totalIn - totalOut),
+  });
 
   const thisMonthKey = new Date().toISOString().slice(0, 7);
   const thisMonth = summaries.find((m) => m.month === thisMonthKey) ?? summaries[summaries.length - 1];
@@ -105,8 +114,8 @@ export default async function DashboardPage() {
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5">
             <StatCard
               label="Available funds"
-              value={<Money value={balance} />}
-              hint="Starting funds + net cash flow"
+              value={<Money value={netWorth} cents />}
+              hint="Across all accounts"
               icon={<Wallet className="size-4" />}
             />
             <StatCard
@@ -132,8 +141,8 @@ export default async function DashboardPage() {
             />
             <StatCard
               label="Owed to me"
-              value={<Money value={owed.outstanding} />}
-              hint={`${fmtMoney(owed.fronted)} fronted`}
+              value={<Money value={owed} />}
+              hint={debtors.length ? `${debtors.length} debtor${debtors.length === 1 ? "" : "s"}` : "All settled"}
               icon={<Users className="size-4" />}
             />
           </div>

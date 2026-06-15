@@ -43,12 +43,13 @@ export function monthlyBudget(settings: Pick<SettingsRow, "starting_funds" | "bu
 
 export function buildMonthlySummaries(
   txns: TransactionRow[],
-  settings: Pick<SettingsRow, "starting_funds" | "budget_months">,
+  opts: { monthlyBudget: number; openingBalance: number },
 ): MonthlySummary[] {
-  const budget = monthlyBudget(settings);
+  const budget = opts.monthlyBudget;
   const byMonth = new Map<string, { expenses: number; inflow: number }>();
 
   for (const t of txns) {
+    if (t.is_transfer) continue; // internal transfers aren't income/spending
     const key = monthKey(t.txn_date);
     const bucket = byMonth.get(key) ?? { expenses: 0, inflow: 0 };
     if (t.direction === "outflow") bucket.expenses += t.amount;
@@ -57,7 +58,7 @@ export function buildMonthlySummaries(
   }
 
   const months = [...byMonth.keys()].sort();
-  let opening = settings.starting_funds;
+  let opening = opts.openingBalance;
   const out: MonthlySummary[] = [];
 
   for (const month of months) {
@@ -88,6 +89,7 @@ export function runningBalance(
 ): number {
   let bal = settings.starting_funds;
   for (const t of txns) {
+    if (t.is_transfer) continue; // transfers move money between own accounts
     if (uptoDate && t.txn_date > uptoDate) continue;
     bal += signed(t);
   }
@@ -112,7 +114,7 @@ export function categoryTotals(
   const byId = new Map(categories.map((c) => [c.id, c]));
   const agg = new Map<string | null, { total: number; count: number }>();
   for (const t of txns) {
-    if (t.direction !== "outflow") continue;
+    if (t.direction !== "outflow" || t.is_transfer) continue;
     const key = t.category_id;
     const cur = agg.get(key) ?? { total: 0, count: 0 };
     cur.total += t.amount;
@@ -148,23 +150,26 @@ export function accountActivity(
   txns: TransactionRow[],
   accounts: AccountRow[],
 ): AccountActivity[] {
-  const agg = new Map<string, { inflow: number; outflow: number }>();
+  const agg = new Map<string, { inflow: number; outflow: number; delta: number }>();
   for (const t of txns) {
-    const cur = agg.get(t.account_id) ?? { inflow: 0, outflow: 0 };
-    if (t.direction === "inflow") cur.inflow += t.amount;
-    else cur.outflow += t.amount;
+    const cur = agg.get(t.account_id) ?? { inflow: 0, outflow: 0, delta: 0 };
+    cur.delta += signed(t); // every movement (incl. transfers) affects the balance
+    if (!t.is_transfer) {
+      // in/out activity excludes transfers (they aren't income/spending)
+      if (t.direction === "inflow") cur.inflow += t.amount;
+      else cur.outflow += t.amount;
+    }
     agg.set(t.account_id, cur);
   }
   return accounts
     .map((account) => {
-      const { inflow = 0, outflow = 0 } = agg.get(account.id) ?? {};
-      const net = round2(inflow - outflow);
+      const { inflow = 0, outflow = 0, delta = 0 } = agg.get(account.id) ?? {};
       return {
         account,
         inflow: round2(inflow),
         outflow: round2(outflow),
-        net,
-        balance: round2(account.opening_balance + net),
+        net: round2(inflow - outflow),
+        balance: round2(account.opening_balance + delta),
       };
     })
     .sort((a, b) => a.account.display_order - b.account.display_order);
@@ -180,7 +185,7 @@ export function inflowTypeTotals(
   const byId = new Map(inflowTypes.map((i) => [i.id, i]));
   const agg = new Map<string | null, { total: number; count: number }>();
   for (const t of txns) {
-    if (t.direction !== "inflow") continue;
+    if (t.direction !== "inflow" || t.is_transfer) continue;
     const cur = agg.get(t.inflow_type_id) ?? { total: 0, count: 0 };
     cur.total += t.amount;
     cur.count += 1;
@@ -203,68 +208,11 @@ export function paycheckCount(txns: TransactionRow[], inflowTypes: InflowTypeRow
 }
 
 // ---------------------------------------------------------------------------
-// Debtors / splits (Excel R12 — the modeling gap we fill)
-// An outflow with whose_expense != 'My' is money fronted for someone; a
-// matching repayment is an inflow of type "Reimbursement".
+// Debtors — explicit, user-managed amounts owed to you (not auto-derived).
 // ---------------------------------------------------------------------------
-export interface DebtorBalance {
-  debtor: DebtorRow;
-  fronted: number; // outflows attributed to this person
-  repaid: number; // reimbursement inflows attributed to this person
-  outstanding: number; // fronted − repaid
-}
-
-export function debtorBalances(
-  txns: TransactionRow[],
-  debtors: DebtorRow[],
-  inflowTypes: InflowTypeRow[],
-): DebtorBalance[] {
-  const reimbursementIds = new Set(
-    inflowTypes.filter((i) => /reimburse/i.test(i.name)).map((i) => i.id),
-  );
-  const agg = new Map<string, { fronted: number; repaid: number }>();
-  for (const t of txns) {
-    if (!t.debtor_id) continue;
-    const cur = agg.get(t.debtor_id) ?? { fronted: 0, repaid: 0 };
-    if (t.direction === "outflow" && t.whose_expense && t.whose_expense !== "My") {
-      cur.fronted += t.amount;
-    } else if (t.direction === "inflow" && t.inflow_type_id && reimbursementIds.has(t.inflow_type_id)) {
-      cur.repaid += t.amount;
-    }
-    agg.set(t.debtor_id, cur);
-  }
-  return debtors
-    .map((debtor) => {
-      const { fronted = 0, repaid = 0 } = agg.get(debtor.id) ?? {};
-      return {
-        debtor,
-        fronted: round2(fronted),
-        repaid: round2(repaid),
-        outstanding: round2(fronted - repaid),
-      };
-    })
-    .sort((a, b) => b.outstanding - a.outstanding);
-}
-
-/** Aggregate owed-to-me across everyone (whether or not attributed to a person). */
-export function totalOwedToMe(txns: TransactionRow[], inflowTypes: InflowTypeRow[]): {
-  fronted: number;
-  reimbursed: number;
-  outstanding: number;
-} {
-  const reimbursementIds = new Set(
-    inflowTypes.filter((i) => /reimburse/i.test(i.name)).map((i) => i.id),
-  );
-  let fronted = 0;
-  let reimbursed = 0;
-  for (const t of txns) {
-    if (t.direction === "outflow" && t.whose_expense && t.whose_expense !== "My") {
-      fronted += t.amount;
-    } else if (t.direction === "inflow" && t.inflow_type_id && reimbursementIds.has(t.inflow_type_id)) {
-      reimbursed += t.amount;
-    }
-  }
-  return { fronted: round2(fronted), reimbursed: round2(reimbursed), outstanding: round2(fronted - reimbursed) };
+/** Total currently owed to you across all debtors. */
+export function sumOwed(debtors: Pick<DebtorRow, "amount">[]): number {
+  return round2(debtors.reduce((s, d) => s + (d.amount ?? 0), 0));
 }
 
 // ---------------------------------------------------------------------------

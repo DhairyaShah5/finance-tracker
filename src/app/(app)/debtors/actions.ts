@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 
 const schema = z.object({
   name: z.string().trim().min(1, "Name is required."),
+  amount: z.coerce.number().min(0, "Amount can't be negative."),
   note: z.string().trim().nullable().optional(),
 });
 
@@ -27,6 +28,7 @@ function revalidate() {
 function normalize(data: z.output<typeof schema>) {
   return {
     name: data.name,
+    amount: data.amount,
     note: data.note?.trim() ? data.note.trim() : null,
   };
 }

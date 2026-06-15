@@ -108,12 +108,14 @@ export interface Database {
           id: string;
           user_id: string;
           name: string;
+          amount: number;
           note: string | null;
         } & Timestamps & WithUpdated;
         Insert: {
           id?: string;
           user_id: string;
           name: string;
+          amount?: number;
           note?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -134,6 +136,7 @@ export interface Database {
           inflow_type_id: string | null;
           whose_expense: "My" | "Friend" | "Group" | "Roommates" | null;
           debtor_id: string | null;
+          is_transfer: boolean;
           notes: string | null;
         } & Timestamps & WithUpdated;
         Insert: {
@@ -148,6 +151,7 @@ export interface Database {
           inflow_type_id?: string | null;
           whose_expense?: "My" | "Friend" | "Group" | "Roommates" | null;
           debtor_id?: string | null;
+          is_transfer?: boolean;
           notes?: string | null;
           created_at?: string;
           updated_at?: string;

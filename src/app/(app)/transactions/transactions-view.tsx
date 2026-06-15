@@ -4,6 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
+  ArrowLeftRight,
   ChevronDown,
   ChevronRight,
   MoreHorizontal,
@@ -35,7 +36,7 @@ import { fmtDate, fmtMoney, hueColor, monthLabel, monthKey } from "@/lib/format"
 import { signed } from "@/lib/calc";
 import type { TransactionRow } from "@/lib/database.types";
 import { TransactionDialog, type TxnLookups } from "./transaction-dialog";
-import { deleteTransaction } from "./actions";
+import { deleteTransaction, setTransactionTransfer } from "./actions";
 
 const CURRENT_MONTH = new Date().toISOString().slice(0, 7);
 
@@ -78,7 +79,13 @@ export function TransactionsView({
         if (category !== "all") {
           if (category === "none" ? t.category_id !== null : t.category_id !== category) return false;
         }
-        if (direction !== "all" && t.direction !== direction) return false;
+        if (direction !== "all") {
+          if (direction === "transfer") {
+            if (!t.is_transfer) return false;
+          } else if (t.is_transfer || t.direction !== direction) {
+            return false;
+          }
+        }
         return true;
       })
       .sort((a, b) =>
@@ -98,14 +105,17 @@ export function TransactionsView({
     return [...map.entries()]
       .sort((a, b) => (a[0] < b[0] ? 1 : -1))
       .map(([key, txns]) => {
-        const inflow = txns.filter((t) => t.direction === "inflow").reduce((s, t) => s + t.amount, 0);
-        const outflow = txns.filter((t) => t.direction === "outflow").reduce((s, t) => s + t.amount, 0);
+        // Transfers between own accounts don't count as income/spending.
+        const real = txns.filter((t) => !t.is_transfer);
+        const inflow = real.filter((t) => t.direction === "inflow").reduce((s, t) => s + t.amount, 0);
+        const outflow = real.filter((t) => t.direction === "outflow").reduce((s, t) => s + t.amount, 0);
         return { key, label: monthLabel(key), txns, inflow, outflow, net: inflow - outflow };
       });
   }, [filtered]);
 
-  const totalIn = filtered.filter((t) => t.direction === "inflow").reduce((s, t) => s + t.amount, 0);
-  const totalOut = filtered.filter((t) => t.direction === "outflow").reduce((s, t) => s + t.amount, 0);
+  const real = filtered.filter((t) => !t.is_transfer);
+  const totalIn = real.filter((t) => t.direction === "inflow").reduce((s, t) => s + t.amount, 0);
+  const totalOut = real.filter((t) => t.direction === "outflow").reduce((s, t) => s + t.amount, 0);
 
   function toggle(key: string) {
     setExpanded((prev) => {
@@ -136,6 +146,15 @@ export function TransactionsView({
       }
     });
   }
+  function onToggleTransfer(t: TransactionRow) {
+    setTransactionTransfer(t.id, !t.is_transfer).then((res) => {
+      if (!res.ok) toast.error(res.error ?? "Failed to update.");
+      else {
+        toast.success(t.is_transfer ? "Unmarked transfer." : "Marked as transfer.");
+        router.refresh();
+      }
+    });
+  }
 
   function renderRow(t: TransactionRow) {
     const cat = t.category_id ? catById.get(t.category_id) : undefined;
@@ -147,7 +166,11 @@ export function TransactionsView({
         </TableCell>
         <TableCell>
           <div className="font-medium">{t.description}</div>
-          {t.whose_expense && t.whose_expense !== "My" ? (
+          {t.is_transfer ? (
+            <Badge variant="secondary" className="mt-0.5 gap-1 text-[10px]">
+              <ArrowLeftRight className="size-2.5" /> Transfer
+            </Badge>
+          ) : t.whose_expense && t.whose_expense !== "My" ? (
             <Badge variant="outline" className="mt-0.5 text-[10px]">{t.whose_expense}</Badge>
           ) : null}
         </TableCell>
@@ -165,7 +188,11 @@ export function TransactionsView({
           {acct?.name ?? "—"}
         </TableCell>
         <TableCell className="text-right">
-          <Money value={signed(t)} cents colored className="font-medium" />
+          {t.is_transfer ? (
+            <Money value={t.amount} cents className="font-medium text-muted-foreground" />
+          ) : (
+            <Money value={signed(t)} cents colored className="font-medium" />
+          )}
         </TableCell>
         <TableCell className="w-10">
           <DropdownMenu>
@@ -177,6 +204,9 @@ export function TransactionsView({
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => onEdit(t)}>
                 <Pencil className="size-4" /> Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onToggleTransfer(t)}>
+                <ArrowLeftRight className="size-4" /> {t.is_transfer ? "Unmark transfer" : "Mark as transfer"}
               </DropdownMenuItem>
               <DropdownMenuItem variant="destructive" onClick={() => onDelete(t)}>
                 <Trash2 className="size-4" /> Delete
@@ -207,6 +237,7 @@ export function TransactionsView({
             <SelectItem value="all">All types</SelectItem>
             <SelectItem value="outflow">Expenses</SelectItem>
             <SelectItem value="inflow">Income</SelectItem>
+            <SelectItem value="transfer">Transfers</SelectItem>
           </SelectContent>
         </Select>
         <Select value={account} onValueChange={setAccount}>

@@ -14,6 +14,7 @@ const schema = z.object({
   inflow_type_id: z.string().uuid().nullable().optional(),
   whose_expense: z.enum(["My", "Friend", "Group", "Roommates"]).nullable().optional(),
   debtor_id: z.string().uuid().nullable().optional(),
+  is_transfer: z.boolean().optional(),
   notes: z.string().trim().nullable().optional(),
 });
 
@@ -22,17 +23,19 @@ type ActionResult = { ok: boolean; error?: string };
 
 function normalize(data: z.output<typeof schema>) {
   // Honor the schema CHECK constraints: inflow_type only on inflows,
-  // whose_expense only on outflows.
+  // whose_expense only on outflows. Transfers carry none of that metadata.
+  const isTransfer = data.is_transfer ?? false;
   return {
     txn_date: data.txn_date,
     account_id: data.account_id,
-    category_id: data.category_id || null,
+    category_id: isTransfer ? null : data.category_id || null,
     description: data.description,
     direction: data.direction,
     amount: data.amount,
-    inflow_type_id: data.direction === "inflow" ? data.inflow_type_id || null : null,
-    whose_expense: data.direction === "outflow" ? data.whose_expense || "My" : null,
-    debtor_id: data.debtor_id || null,
+    inflow_type_id: !isTransfer && data.direction === "inflow" ? data.inflow_type_id || null : null,
+    whose_expense: !isTransfer && data.direction === "outflow" ? data.whose_expense || "My" : null,
+    debtor_id: isTransfer ? null : data.debtor_id || null,
+    is_transfer: isTransfer,
     notes: data.notes || null,
   };
 }
@@ -83,6 +86,19 @@ export async function deleteTransaction(id: string): Promise<ActionResult> {
   const { supabase, user } = await authed();
   if (!user) return { ok: false, error: "Not signed in." };
   const { error } = await supabase.from("transactions").delete().eq("id", id).eq("user_id", user.id);
+  if (error) return { ok: false, error: error.message };
+  revalidate();
+  return { ok: true };
+}
+
+/** Quick toggle to (un)mark a transaction as an internal transfer. */
+export async function setTransactionTransfer(id: string, isTransfer: boolean): Promise<ActionResult> {
+  const { supabase, user } = await authed();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const patch = isTransfer
+    ? { is_transfer: true, category_id: null, inflow_type_id: null, whose_expense: null, debtor_id: null }
+    : { is_transfer: false };
+  const { error } = await supabase.from("transactions").update(patch).eq("id", id).eq("user_id", user.id);
   if (error) return { ok: false, error: error.message };
   revalidate();
   return { ok: true };

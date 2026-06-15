@@ -29,20 +29,15 @@ export function DebtorDialog({
 }) {
   const router = useRouter();
   const [pending, start] = React.useTransition();
-
   const [name, setName] = React.useState("");
+  const [amount, setAmount] = React.useState("");
   const [note, setNote] = React.useState("");
 
-  // Hydrate form when opening.
   React.useEffect(() => {
     if (!open) return;
-    if (existing) {
-      setName(existing.name);
-      setNote(existing.note ?? "");
-    } else {
-      setName("");
-      setNote("");
-    }
+    setName(existing?.name ?? "");
+    setAmount(existing ? String(existing.amount) : "");
+    setNote(existing?.note ?? "");
   }, [open, existing]);
 
   function submit() {
@@ -50,14 +45,9 @@ export function DebtorDialog({
       toast.error("Name is required.");
       return;
     }
-    const input: DebtorInput = {
-      name: name.trim(),
-      note: note.trim() || null,
-    };
+    const input: DebtorInput = { name: name.trim(), amount: amount || 0, note: note.trim() || null };
     start(async () => {
-      const res = existing
-        ? await updateDebtor(existing.id, input)
-        : await createDebtor(input);
+      const res = existing ? await updateDebtor(existing.id, input) : await createDebtor(input);
       if (!res.ok) {
         toast.error(res.error ?? "Failed to save.");
         return;
@@ -70,13 +60,10 @@ export function DebtorDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>{existing ? "Edit debtor" : "Add debtor"}</DialogTitle>
-          <DialogDescription>
-            Track someone you front money for. Attribute transactions to them on the
-            Transactions page.
-          </DialogDescription>
+          <DialogDescription>Track how much someone currently owes you.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -86,17 +73,23 @@ export function DebtorDialog({
               id="debtor-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Alex"
+              placeholder="e.g. Vivek"
               autoComplete="off"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !pending) {
-                  e.preventDefault();
-                  submit();
-                }
-              }}
             />
           </div>
-
+          <div className="space-y-1.5">
+            <Label htmlFor="debtor-amount">Amount owed</Label>
+            <Input
+              id="debtor-amount"
+              type="number"
+              step="0.01"
+              min="0"
+              inputMode="decimal"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0.00"
+            />
+          </div>
           <div className="space-y-1.5">
             <Label htmlFor="debtor-note">Note</Label>
             <Textarea
@@ -104,7 +97,7 @@ export function DebtorDialog({
               value={note}
               onChange={(e) => setNote(e.target.value)}
               rows={2}
-              placeholder="Optional — roommate, college friend, etc."
+              placeholder="Optional"
             />
           </div>
         </div>
