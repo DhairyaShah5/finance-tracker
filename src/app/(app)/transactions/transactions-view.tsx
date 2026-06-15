@@ -35,7 +35,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Money } from "@/components/money";
 import { fmtDate, fmtMoney, hueColor, monthLabel, monthKey } from "@/lib/format";
-import { savingsCategoryIds, signed } from "@/lib/calc";
+import { myAmount, savingsCategoryIds, signed } from "@/lib/calc";
 import type { TransactionRow } from "@/lib/database.types";
 import { TransactionDialog, type TxnLookups } from "./transaction-dialog";
 import { deleteTransaction, setTransactionTransfer } from "./actions";
@@ -115,18 +115,15 @@ export function TransactionsView({
         // Transfers and savings aren't income/spending.
         const real = txns.filter((t) => !t.is_transfer);
         const inflow = real.filter((t) => t.direction === "inflow").reduce((s, t) => s + t.amount, 0);
-        const outflow = real
-          .filter((t) => t.direction === "outflow" && !isSavings(t))
-          .reduce((s, t) => s + t.amount, 0);
+        // Only your share counts (split expenses), savings excluded.
+        const outflow = real.filter((t) => !isSavings(t)).reduce((s, t) => s + myAmount(t), 0);
         return { key, label: monthLabel(key), txns, inflow, outflow, net: inflow - outflow };
       });
   }, [filtered, isSavings]);
 
   const real = filtered.filter((t) => !t.is_transfer);
   const totalIn = real.filter((t) => t.direction === "inflow").reduce((s, t) => s + t.amount, 0);
-  const totalOut = real
-    .filter((t) => t.direction === "outflow" && !isSavings(t))
-    .reduce((s, t) => s + t.amount, 0);
+  const totalOut = real.filter((t) => !isSavings(t)).reduce((s, t) => s + myAmount(t), 0);
 
   function toggle(key: string) {
     setExpanded((prev) => {

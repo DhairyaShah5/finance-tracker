@@ -139,6 +139,7 @@ export interface Database {
           whose_expense: "My" | "Friend" | "Group" | "Roommates" | null;
           debtor_id: string | null;
           is_transfer: boolean;
+          split_count: number | null;
           notes: string | null;
         } & Timestamps & WithUpdated;
         Insert: {
@@ -154,6 +155,7 @@ export interface Database {
           whose_expense?: "My" | "Friend" | "Group" | "Roommates" | null;
           debtor_id?: string | null;
           is_transfer?: boolean;
+          split_count?: number | null;
           notes?: string | null;
           created_at?: string;
           updated_at?: string;

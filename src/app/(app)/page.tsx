@@ -8,6 +8,7 @@ import {
   accountActivity,
   realBalanceTrend,
   savingsCategoryIds,
+  myAmount,
   sumOwed,
   signed,
 } from "@/lib/calc";
@@ -50,12 +51,9 @@ export default async function DashboardPage() {
   const savingsIds = savingsCategoryIds(categories);
   const isSavings = (t: (typeof txns)[number]) => !!t.category_id && savingsIds.has(t.category_id);
   const totalIn = txns.filter((t) => t.direction === "inflow" && !t.is_transfer).reduce((s, t) => s + t.amount, 0);
-  const totalOut = txns
-    .filter((t) => t.direction === "outflow" && !t.is_transfer && !isSavings(t))
-    .reduce((s, t) => s + t.amount, 0);
-  const totalSaved = txns
-    .filter((t) => t.direction === "outflow" && !t.is_transfer && isSavings(t))
-    .reduce((s, t) => s + t.amount, 0);
+  // Spending counts only your share (split expenses) and excludes savings.
+  const totalOut = txns.filter((t) => !isSavings(t)).reduce((s, t) => s + myAmount(t), 0);
+  const totalSaved = txns.filter((t) => isSavings(t)).reduce((s, t) => s + myAmount(t), 0);
 
   const summaries = buildMonthlySummaries(txns, {
     monthlyBudget: monthlyBudget(settings),

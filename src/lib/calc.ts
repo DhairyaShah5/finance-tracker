@@ -20,6 +20,24 @@ export function signed(t: Pick<TransactionRow, "direction" | "amount">): number 
   return t.direction === "inflow" ? t.amount : -t.amount;
 }
 
+/**
+ * The portion of an OUTFLOW that is your own expense:
+ *   My / none           → full amount
+ *   Friend              → 0 (fronted entirely for someone else)
+ *   Group / Roommates   → amount ÷ split_count (your share; 0 if no split set)
+ * Transfers and inflows → 0.
+ */
+export function myAmount(
+  t: Pick<TransactionRow, "direction" | "amount" | "is_transfer" | "whose_expense" | "split_count">,
+): number {
+  if (t.direction !== "outflow" || t.is_transfer) return 0;
+  if (t.whose_expense === "Friend") return 0;
+  if (t.whose_expense === "Group" || t.whose_expense === "Roommates") {
+    return t.split_count && t.split_count > 0 ? round2(t.amount / t.split_count) : 0;
+  }
+  return t.amount;
+}
+
 // ---------------------------------------------------------------------------
 // Monthly summaries — the Dashboard / closing-balance chain (Excel R1–R6)
 // ---------------------------------------------------------------------------
@@ -55,7 +73,7 @@ export function buildMonthlySummaries(
     const bucket = byMonth.get(key) ?? { expenses: 0, inflow: 0 };
     if (t.direction === "outflow") {
       if (t.category_id && savings.has(t.category_id)) continue; // savings isn't an expense
-      bucket.expenses += t.amount;
+      bucket.expenses += myAmount(t); // only your share of split expenses
     } else bucket.inflow += t.amount;
     byMonth.set(key, bucket);
   }
@@ -145,12 +163,14 @@ export function categoryTotals(
   const byId = new Map(categories.map((c) => [c.id, c]));
   const agg = new Map<string | null, { total: number; count: number }>();
   for (const t of txns) {
-    if (t.direction !== "outflow" || t.is_transfer) continue;
+    if (t.direction !== "outflow") continue;
     // Savings (investments, vault) are not spending — keep them out of the breakdown.
     if (t.category_id && byId.get(t.category_id)?.budget_group === "savings") continue;
+    const share = myAmount(t); // your share only (handles transfers / friend / split)
+    if (share === 0) continue;
     const key = t.category_id;
     const cur = agg.get(key) ?? { total: 0, count: 0 };
-    cur.total += t.amount;
+    cur.total += share;
     cur.count += 1;
     agg.set(key, cur);
   }
@@ -189,13 +209,15 @@ export function budgetGroupsByMonth(
   const byMonth = new Map<string, Omit<MonthGroups, "month" | "label" | "total">>();
   for (const t of txns) {
     if (t.direction !== "outflow" || t.is_transfer) continue;
+    const share = myAmount(t); // your share only
+    if (share === 0) continue;
     const g = t.category_id ? groupById.get(t.category_id) : null;
     const m = monthKey(t.txn_date);
     const b = byMonth.get(m) ?? { needs: 0, wants: 0, savings: 0, unclassified: 0 };
-    if (g === "needs") b.needs += t.amount;
-    else if (g === "wants") b.wants += t.amount;
-    else if (g === "savings") b.savings += t.amount;
-    else b.unclassified += t.amount;
+    if (g === "needs") b.needs += share;
+    else if (g === "wants") b.wants += share;
+    else if (g === "savings") b.savings += share;
+    else b.unclassified += share;
     byMonth.set(m, b);
   }
   return [...byMonth.keys()]

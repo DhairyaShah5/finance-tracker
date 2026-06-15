@@ -15,6 +15,7 @@ const schema = z.object({
   whose_expense: z.enum(["My", "Friend", "Group", "Roommates"]).nullable().optional(),
   debtor_id: z.string().uuid().nullable().optional(),
   is_transfer: z.boolean().optional(),
+  split_count: z.coerce.number().int().positive().nullable().optional(),
   notes: z.string().trim().nullable().optional(),
 });
 
@@ -34,6 +35,13 @@ function normalize(data: z.output<typeof schema>) {
     amount: data.amount,
     inflow_type_id: !isTransfer && data.direction === "inflow" ? data.inflow_type_id || null : null,
     whose_expense: !isTransfer && data.direction === "outflow" ? data.whose_expense || "My" : null,
+    // split_count only applies to Group/Roommates expenses.
+    split_count:
+      !isTransfer &&
+      data.direction === "outflow" &&
+      (data.whose_expense === "Group" || data.whose_expense === "Roommates")
+        ? data.split_count ?? null
+        : null,
     debtor_id: isTransfer ? null : data.debtor_id || null,
     is_transfer: isTransfer,
     notes: data.notes || null,
@@ -49,7 +57,7 @@ async function authed() {
 }
 
 function revalidate() {
-  for (const p of ["/transactions", "/", "/accounts", "/debtors"]) revalidatePath(p);
+  for (const p of ["/transactions", "/", "/accounts", "/debtors", "/insights"]) revalidatePath(p);
 }
 
 export async function createTransaction(input: TransactionInput): Promise<ActionResult> {
@@ -86,6 +94,20 @@ export async function deleteTransaction(id: string): Promise<ActionResult> {
   const { supabase, user } = await authed();
   if (!user) return { ok: false, error: "Not signed in." };
   const { error } = await supabase.from("transactions").delete().eq("id", id).eq("user_id", user.id);
+  if (error) return { ok: false, error: error.message };
+  revalidate();
+  return { ok: true };
+}
+
+/** Reassign a transaction's category — used from the Insights month breakdown. */
+export async function setTransactionCategory(id: string, categoryId: string | null): Promise<ActionResult> {
+  const { supabase, user } = await authed();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const { error } = await supabase
+    .from("transactions")
+    .update({ category_id: categoryId })
+    .eq("id", id)
+    .eq("user_id", user.id);
   if (error) return { ok: false, error: error.message };
   revalidate();
   return { ok: true };

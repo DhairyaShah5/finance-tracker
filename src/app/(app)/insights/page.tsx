@@ -1,5 +1,5 @@
 import { requireUser } from "@/lib/queries";
-import { budgetGroupsByMonth, incomeByMonth } from "@/lib/calc";
+import { budgetGroupsByMonth, incomeByMonth, myAmount } from "@/lib/calc";
 import { fmtMoney, fmtPct, monthKey } from "@/lib/format";
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
@@ -27,20 +27,30 @@ export default async function InsightsPage() {
   const months = budgetGroupsByMonth(txns, categories);
   const income = Object.fromEntries(incomeByMonth(txns));
 
-  // Per-expense detail for the click-through modal.
+  // Per-expense detail for the click-through modal (your share only).
   const details: DetailItem[] = txns
     .filter((t) => t.direction === "outflow" && !t.is_transfer)
     .map((t) => {
       const cat = t.category_id ? catById.get(t.category_id) : undefined;
       return {
+        id: t.id,
         month: monthKey(t.txn_date),
         date: t.txn_date,
         description: t.description,
         category: cat?.name ?? null,
+        categoryId: t.category_id,
         group: (cat?.budget_group ?? "unclassified") as Group,
-        amount: t.amount,
+        amount: myAmount(t),
+        full: t.amount,
+        split: t.split_count,
       };
-    });
+    })
+    .filter((d) => d.amount > 0);
+
+  const catOptions = categories
+    .slice()
+    .sort((a, b) => a.display_order - b.display_order)
+    .map((c) => ({ id: c.id, name: c.name, budget_group: c.budget_group }));
 
   const totals = months.reduce(
     (a, m) => ({
@@ -141,7 +151,7 @@ export default async function InsightsPage() {
             <StatCard label="Total spent" value={<Money value={totals.needs + totals.wants + totals.unclassified} />} hint="Excl. savings" />
           </div>
 
-          <MonthlyBreakdown months={months} income={income} details={details} />
+          <MonthlyBreakdown months={months} income={income} details={details} categories={catOptions} />
         </>
       )}
     </div>

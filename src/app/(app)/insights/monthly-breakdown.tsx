@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { ChevronRight } from "lucide-react";
 import {
   Dialog,
@@ -17,10 +19,20 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Money } from "@/components/money";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, fmtMoney } from "@/lib/format";
+import { setTransactionCategory } from "../transactions/actions";
 
 export interface MonthRow {
   month: string;
@@ -33,14 +45,24 @@ export interface MonthRow {
 }
 export type Group = "needs" | "wants" | "savings" | "unclassified";
 export interface DetailItem {
+  id: string;
   month: string;
   date: string;
   description: string;
   category: string | null;
+  categoryId: string | null;
   group: Group;
-  amount: number;
+  amount: number; // your share
+  full: number; // full transaction amount
+  split: number | null;
+}
+export interface CatOption {
+  id: string;
+  name: string;
+  budget_group: "needs" | "wants" | "savings" | null;
 }
 
+const NONE = "__none__";
 const GROUPS: { key: Group; label: string; color: string }[] = [
   { key: "needs", label: "Needs", color: "var(--chart-1)" },
   { key: "wants", label: "Wants", color: "var(--chart-5)" },
@@ -52,14 +74,36 @@ export function MonthlyBreakdown({
   months,
   income,
   details,
+  categories,
 }: {
   months: MonthRow[];
   income: Record<string, number>;
   details: DetailItem[];
+  categories: CatOption[];
 }) {
+  const router = useRouter();
+  const [pending, start] = React.useTransition();
   const [openMonth, setOpenMonth] = React.useState<string | null>(null);
   const selected = months.find((m) => m.month === openMonth) ?? null;
   const monthItems = openMonth ? details.filter((d) => d.month === openMonth) : [];
+
+  const grouped = {
+    needs: categories.filter((c) => c.budget_group === "needs"),
+    wants: categories.filter((c) => c.budget_group === "wants"),
+    savings: categories.filter((c) => c.budget_group === "savings"),
+    unclassified: categories.filter((c) => !c.budget_group),
+  };
+
+  function changeCategory(id: string, value: string) {
+    start(async () => {
+      const res = await setTransactionCategory(id, value === NONE ? null : value);
+      if (!res.ok) toast.error(res.error ?? "Failed to recategorize.");
+      else {
+        toast.success("Recategorized.");
+        router.refresh();
+      }
+    });
+  }
 
   return (
     <>
@@ -111,11 +155,11 @@ export function MonthlyBreakdown({
       </Card>
 
       <Dialog open={!!openMonth} onOpenChange={(v) => !v && setOpenMonth(null)}>
-        <DialogContent className="max-h-[82vh] overflow-y-auto sm:max-w-lg">
+        <DialogContent className="max-h-[82vh] overflow-y-auto sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>{selected?.label} — expense breakdown</DialogTitle>
             <DialogDescription>
-              Check that each expense sits in the right group. Reassign a category in Settings.
+              Change any expense&apos;s category to move it between needs / wants / savings.
             </DialogDescription>
           </DialogHeader>
 
@@ -136,15 +180,38 @@ export function MonthlyBreakdown({
                     <Money value={subtotal} cents className="text-sm font-semibold" />
                   </div>
                   <div className="divide-y divide-border/60">
-                    {items.map((d, i) => (
-                      <div key={i} className="flex items-center justify-between gap-3 py-1.5 text-sm">
-                        <div className="min-w-0">
+                    {items.map((d) => (
+                      <div key={d.id} className="flex items-center gap-2 py-1.5 text-sm">
+                        <div className="min-w-0 flex-1">
                           <div className="truncate">{d.description}</div>
                           <div className="text-xs text-muted-foreground">
-                            {d.category ?? "Uncategorized"} · {fmtDate(d.date, "short")}
+                            {fmtDate(d.date, "short")}
+                            {d.split ? ` · your share of ${fmtMoney(d.full, { cents: true })} (÷${d.split})` : ""}
                           </div>
                         </div>
-                        <Money value={d.amount} cents className="shrink-0 tnum" />
+                        <Select
+                          value={d.categoryId ?? NONE}
+                          onValueChange={(v) => changeCategory(d.id, v)}
+                          disabled={pending}
+                        >
+                          <SelectTrigger className="h-7 w-36 shrink-0 text-xs">
+                            <SelectValue placeholder="Uncategorized" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={NONE}>Uncategorized</SelectItem>
+                            {(["needs", "wants", "savings", "unclassified"] as const).map((gk) =>
+                              grouped[gk].length ? (
+                                <SelectGroup key={gk}>
+                                  <SelectLabel className="capitalize">{gk}</SelectLabel>
+                                  {grouped[gk].map((c) => (
+                                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                                  ))}
+                                </SelectGroup>
+                              ) : null,
+                            )}
+                          </SelectContent>
+                        </Select>
+                        <Money value={d.amount} cents className="w-20 shrink-0 text-right tnum" />
                       </div>
                     ))}
                   </div>

@@ -31,6 +31,7 @@ import type {
   TransactionRow,
 } from "@/lib/database.types";
 import { WHOSE_EXPENSE_VALUES } from "@/lib/defaults";
+import { fmtMoney } from "@/lib/format";
 import { createTransaction, updateTransaction, type TransactionInput } from "./actions";
 
 const NONE = "__none__";
@@ -68,6 +69,7 @@ export function TransactionDialog({
   const [categoryId, setCategoryId] = React.useState(NONE);
   const [inflowTypeId, setInflowTypeId] = React.useState(NONE);
   const [whose, setWhose] = React.useState<string>("My");
+  const [splitCount, setSplitCount] = React.useState("2");
   const [debtorId, setDebtorId] = React.useState(NONE);
   const [notes, setNotes] = React.useState("");
 
@@ -83,6 +85,7 @@ export function TransactionDialog({
       setCategoryId(existing.category_id ?? NONE);
       setInflowTypeId(existing.inflow_type_id ?? NONE);
       setWhose(existing.whose_expense ?? "My");
+      setSplitCount(existing.split_count ? String(existing.split_count) : "2");
       setDebtorId(existing.debtor_id ?? NONE);
       setNotes(existing.notes ?? "");
     } else {
@@ -95,6 +98,7 @@ export function TransactionDialog({
       setCategoryId(NONE);
       setInflowTypeId(NONE);
       setWhose("My");
+      setSplitCount("2");
       setDebtorId(NONE);
       setNotes("");
     }
@@ -111,9 +115,13 @@ export function TransactionDialog({
       amount,
       inflow_type_id: inflowTypeId === NONE ? null : inflowTypeId,
       whose_expense: whose as TransactionInput["whose_expense"],
+      split_count:
+        mode === "expense" && (whose === "Group" || whose === "Roommates")
+          ? Number(splitCount) || null
+          : null,
       debtor_id: debtorId === NONE ? null : debtorId,
-      is_transfer: mode === "transfer",
       notes: notes || null,
+      is_transfer: mode === "transfer",
     };
     start(async () => {
       const res = existing
@@ -234,33 +242,60 @@ export function TransactionDialog({
           </div>
 
           {mode === "expense" ? (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Whose expense</Label>
-                <Select value={whose} onValueChange={setWhose}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {WHOSE_EXPENSE_VALUES.map((w) => (
-                      <SelectItem key={w} value={w}>{w}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {whose !== "My" ? (
+            <>
+              <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label>Debtor</Label>
-                  <Select value={debtorId} onValueChange={setDebtorId}>
-                    <SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger>
+                  <Label>Whose expense</Label>
+                  <Select value={whose} onValueChange={setWhose}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={NONE}>Unassigned</SelectItem>
-                      {lookups.debtors.map((d) => (
-                        <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                      {WHOSE_EXPENSE_VALUES.map((w) => (
+                        <SelectItem key={w} value={w}>{w}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
+                {whose !== "My" ? (
+                  <div className="space-y-1.5">
+                    <Label>Debtor</Label>
+                    <Select value={debtorId} onValueChange={setDebtorId}>
+                      <SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NONE}>Unassigned</SelectItem>
+                        {lookups.debtors.map((d) => (
+                          <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null}
+              </div>
+
+              {whose === "Group" || whose === "Roommates" ? (
+                <div className="grid grid-cols-2 items-end gap-3 rounded-lg border border-border bg-secondary/40 p-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="split">Split between (incl. you)</Label>
+                    <Input
+                      id="split"
+                      type="number"
+                      min="1"
+                      step="1"
+                      inputMode="numeric"
+                      value={splitCount}
+                      onChange={(e) => setSplitCount(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="text-xs text-muted-foreground">Your share</p>
+                    <p className="text-lg font-semibold tnum">
+                      {Number(splitCount) > 0 && Number(amount) > 0
+                        ? fmtMoney(Number(amount) / Number(splitCount), { cents: true })
+                        : "—"}
+                    </p>
+                  </div>
+                </div>
               ) : null}
-            </div>
+            </>
           ) : null}
 
           <div className="space-y-1.5">
