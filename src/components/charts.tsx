@@ -133,8 +133,9 @@ export interface DonutSlice {
   color: string;
 }
 
-/** Donut breakdown with built-in legend (category / account composition). */
-export function DonutChart({ data, height = 240 }: { data: DonutSlice[]; height?: number }) {
+/** Donut breakdown (category / account composition). No legend — hover a slice
+ *  for its name, amount, and share — so the wheel itself can be large. */
+export function DonutChart({ data, height = 300 }: { data: DonutSlice[]; height?: number }) {
   const total = data.reduce((s, d) => s + d.value, 0);
   return (
     <ResponsiveContainer width="100%" height={height}>
@@ -143,8 +144,8 @@ export function DonutChart({ data, height = 240 }: { data: DonutSlice[]; height?
           data={data}
           dataKey="value"
           nameKey="name"
-          innerRadius="58%"
-          outerRadius="86%"
+          innerRadius="55%"
+          outerRadius="92%"
           paddingAngle={1.5}
           strokeWidth={0}
         >
@@ -158,10 +159,6 @@ export function DonutChart({ data, height = 240 }: { data: DonutSlice[]; height?
             const v = Number(value);
             return [`${fmtMoney(v, { cents: true })} (${total ? ((v / total) * 100).toFixed(0) : 0}%)`, String(name)];
           }}
-        />
-        <Legend
-          wrapperStyle={{ fontSize: 12 }}
-          formatter={(value) => <span style={{ color: "var(--muted-foreground)" }}>{value}</span>}
         />
       </PieChart>
     </ResponsiveContainer>
