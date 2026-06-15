@@ -133,26 +133,26 @@ export default async function DashboardPage() {
             />
             <StatCard
               label="Saved"
-              value={<Money value={recon.savings} />}
+              value={<Money value={recon.savings} cents />}
               hint="Investments + vault"
               accent="positive"
               icon={<PiggyBank className="size-4" />}
             />
             <StatCard
               label="Total income"
-              value={<Money value={recon.income} />}
-              hint={`Incl. ${fmtMoney(recon.arrivalCapital)} arrival capital`}
+              value={<Money value={recon.income - recon.arrivalCapital} cents />}
+              hint="Paychecks · excludes arrival capital"
               accent="positive"
               icon={<TrendingUp className="size-4" />}
             />
             <StatCard
               label="Total spent"
-              value={<Money value={recon.spending} />}
+              value={<Money value={recon.spending} cents />}
               icon={<TrendingDown className="size-4" />}
             />
             <StatCard
               label="Owed to me"
-              value={<Money value={owed} />}
+              value={<Money value={owed} cents />}
               hint={debtors.length ? `${debtors.length} debtor${debtors.length === 1 ? "" : "s"}` : "All settled"}
               icon={<Users className="size-4" />}
             />
