@@ -30,7 +30,8 @@ export default async function DashboardPage() {
     supabase.from("inflow_types").select("*").eq("user_id", user.id),
   ]);
 
-  const settings = settingsRes.data!;
+  // requireUser() guarantees a settings row, but stay defensive against a null.
+  const settings = settingsRes.data ?? { starting_funds: 0, budget_months: 12 };
   const txns = txnsRes.data ?? [];
   const accounts = accountsRes.data ?? [];
   const categories = categoriesRes.data ?? [];

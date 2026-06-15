@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { ensureUserSetup } from "@/lib/setup";
 import { AppSidebar } from "@/components/app-sidebar";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -11,8 +10,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   if (!user) redirect("/login");
 
-  // Provision settings + seed lookup lists on first visit.
-  await ensureUserSetup(supabase, user.id);
+  // Note: settings + lookups are provisioned in requireUser() (awaited by each
+  // page before it fetches data). The layout renders in parallel with the page,
+  // so seeding here would race the page's queries.
 
   return (
     <div className="flex min-h-screen flex-col lg:flex-row">
