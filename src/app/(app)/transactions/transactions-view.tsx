@@ -34,8 +34,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Money } from "@/components/money";
+import { ReconciliationFlow } from "@/components/reconciliation";
 import { fmtDate, fmtMoney, hueColor, monthLabel, monthKey } from "@/lib/format";
-import { myAmount, savingsCategoryIds, signed } from "@/lib/calc";
+import { myAmount, isSavingsTxn, reconcile, signed } from "@/lib/calc";
 import type { TransactionRow } from "@/lib/database.types";
 import { TransactionDialog, type TxnLookups } from "./transaction-dialog";
 import { deleteTransaction, setTransactionTransfer } from "./actions";
@@ -45,19 +46,18 @@ const CURRENT_MONTH = new Date().toISOString().slice(0, 7);
 export function TransactionsView({
   transactions,
   lookups,
+  starting,
+  netWorth,
 }: {
   transactions: TransactionRow[];
   lookups: TxnLookups;
+  starting: number;
+  netWorth: number;
 }) {
   const router = useRouter();
   const catById = React.useMemo(
     () => new Map(lookups.categories.map((c) => [c.id, c])),
     [lookups.categories],
-  );
-  const savingsIds = React.useMemo(() => savingsCategoryIds(lookups.categories), [lookups.categories]);
-  const isSavings = React.useCallback(
-    (t: TransactionRow) => !!t.category_id && savingsIds.has(t.category_id),
-    [savingsIds],
   );
   const acctById = React.useMemo(
     () => new Map(lookups.accounts.map((a) => [a.id, a])),
@@ -116,14 +116,16 @@ export function TransactionsView({
         const real = txns.filter((t) => !t.is_transfer);
         const inflow = real.filter((t) => t.direction === "inflow").reduce((s, t) => s + t.amount, 0);
         // Only your share counts (split expenses), savings excluded.
-        const outflow = real.filter((t) => !isSavings(t)).reduce((s, t) => s + myAmount(t), 0);
+        const outflow = real.filter((t) => !isSavingsTxn(t)).reduce((s, t) => s + myAmount(t), 0);
         return { key, label: monthLabel(key), txns, inflow, outflow, net: inflow - outflow };
       });
-  }, [filtered, isSavings]);
+  }, [filtered]);
 
   const real = filtered.filter((t) => !t.is_transfer);
   const totalIn = real.filter((t) => t.direction === "inflow").reduce((s, t) => s + t.amount, 0);
-  const totalOut = real.filter((t) => !isSavings(t)).reduce((s, t) => s + myAmount(t), 0);
+  const totalOut = real.filter((t) => !isSavingsTxn(t)).reduce((s, t) => s + myAmount(t), 0);
+  // Full-ledger reconciliation (independent of the active filter).
+  const recon = reconcile(transactions, { starting_funds: starting }, netWorth);
 
   function toggle(key: string) {
     setExpanded((prev) => {
@@ -178,7 +180,7 @@ export function TransactionsView({
             <Badge variant="secondary" className="mt-0.5 gap-1 text-[10px]">
               <EyeOff className="size-2.5" /> Excluded
             </Badge>
-          ) : isSavings(t) ? (
+          ) : isSavingsTxn(t) ? (
             <Badge variant="secondary" className="mt-0.5 gap-1 text-[10px]">
               <PiggyBank className="size-2.5" /> Savings
             </Badge>
@@ -333,13 +335,24 @@ export function TransactionsView({
         </div>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
-        <span>{filtered.length} transactions</span>
-        <span className="flex gap-4">
-          <span>Income <Money value={totalIn} cents className="font-medium text-positive" /></span>
-          <span>Spent <Money value={totalOut} cents className="font-medium text-negative" /></span>
-        </span>
-      </div>
+      {filterActive ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+          <span>{filtered.length} of {transactions.length} shown</span>
+          <span className="flex gap-4">
+            <span>In <Money value={totalIn} cents className="font-medium text-positive" /></span>
+            <span>Out <Money value={totalOut} cents className="font-medium text-negative" /></span>
+          </span>
+        </div>
+      ) : null}
+
+      {/* The cash identity — proves income/spending/savings reconcile to balance. */}
+      <Card className="p-4">
+        <div className="mb-1 flex items-center justify-between">
+          <h3 className="text-sm font-semibold">How your balance adds up</h3>
+          <span className="text-xs text-muted-foreground">Whole ledger · {transactions.length} txns</span>
+        </div>
+        <ReconciliationFlow data={recon} />
+      </Card>
 
       <TransactionDialog
         open={dialogOpen}

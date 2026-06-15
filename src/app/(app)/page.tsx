@@ -7,8 +7,8 @@ import {
   categoryTotals,
   accountActivity,
   realBalanceTrend,
-  savingsCategoryIds,
-  myAmount,
+  reconcile,
+  isArrivalDeposit,
   sumOwed,
   signed,
 } from "@/lib/calc";
@@ -16,6 +16,7 @@ import { fmtMoney, fmtDate, hueColor } from "@/lib/format";
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
 import { Money } from "@/components/money";
+import { ReconciliationFlow } from "@/components/reconciliation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TrendChart, BarSeriesChart, DonutChart } from "@/components/charts";
@@ -47,27 +48,21 @@ export default async function DashboardPage() {
     .reduce((s, a) => s + a.balance, 0);
   const owed = sumOwed(debtors);
 
-  // Savings (investments, vaults) and internal transfers are NOT spending.
-  const savingsIds = savingsCategoryIds(categories);
-  const isSavings = (t: (typeof txns)[number]) => !!t.category_id && savingsIds.has(t.category_id);
-  const totalIn = txns.filter((t) => t.direction === "inflow" && !t.is_transfer).reduce((s, t) => s + t.amount, 0);
-  // Spending counts only your share (split expenses) and excludes savings.
-  const totalOut = txns.filter((t) => !isSavings(t)).reduce((s, t) => s + myAmount(t), 0);
-  const totalSaved = txns.filter((t) => isSavings(t)).reduce((s, t) => s + myAmount(t), 0);
+  // Full reconciliation — every dollar in exactly one bucket:
+  // starting + income − spending − savings − net-fronted = net worth.
+  const recon = reconcile(txns, settings, netWorth);
 
   const summaries = buildMonthlySummaries(txns, {
     monthlyBudget: monthlyBudget(settings),
     openingBalance: 0, // closing chain unused here; the trend uses realBalanceTrend
-    savingsCategoryIds: savingsIds,
   });
 
   // Chart series — balance trajectory from arrival capital to current net worth.
   // Exclude the arrival deposits themselves (they constitute the starting
   // balance, so counting them as flows would double-count). This matches the
   // source workbook's monthly closing balances exactly.
-  const ARRIVAL_DEPOSIT = /wire transfer from home|forex card to bofa|initial cash deposit/i;
   const balanceTrend = realBalanceTrend(
-    txns.filter((t) => !ARRIVAL_DEPOSIT.test(t.description)),
+    txns.filter((t) => !isArrivalDeposit(t)),
     netWorth,
   );
   const balanceSeries = [
@@ -138,20 +133,21 @@ export default async function DashboardPage() {
             />
             <StatCard
               label="Saved"
-              value={<Money value={totalSaved} />}
+              value={<Money value={recon.savings} />}
               hint="Investments + vault"
               accent="positive"
               icon={<PiggyBank className="size-4" />}
             />
             <StatCard
               label="Total income"
-              value={<Money value={totalIn} />}
+              value={<Money value={recon.income} />}
+              hint="Paychecks (excl. arrival)"
               accent="positive"
               icon={<TrendingUp className="size-4" />}
             />
             <StatCard
               label="Total spent"
-              value={<Money value={totalOut} />}
+              value={<Money value={recon.spending} />}
               icon={<TrendingDown className="size-4" />}
             />
             <StatCard
@@ -161,6 +157,18 @@ export default async function DashboardPage() {
               icon={<Users className="size-4" />}
             />
           </div>
+
+          {/* The cash identity — how the current balance is reached, to the cent */}
+          <Card>
+            <CardHeader>
+              <CardTitle>How your balance adds up</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="max-w-xl">
+                <ReconciliationFlow data={recon} />
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Charts */}
           <div className="grid gap-4 lg:grid-cols-5">

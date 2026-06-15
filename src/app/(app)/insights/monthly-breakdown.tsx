@@ -22,9 +22,7 @@ import {
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -32,7 +30,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Money } from "@/components/money";
 import { fmtDate, fmtMoney } from "@/lib/format";
-import { setTransactionCategory } from "../transactions/actions";
+import { setTransactionBudgetGroup } from "../transactions/actions";
 
 export interface MonthRow {
   month: string;
@@ -50,16 +48,10 @@ export interface DetailItem {
   date: string;
   description: string;
   category: string | null;
-  categoryId: string | null;
   group: Group;
   amount: number; // your share
   full: number; // full transaction amount
   split: number | null;
-}
-export interface CatOption {
-  id: string;
-  name: string;
-  budget_group: "needs" | "wants" | "savings" | null;
 }
 
 const NONE = "__none__";
@@ -74,12 +66,10 @@ export function MonthlyBreakdown({
   months,
   income,
   details,
-  categories,
 }: {
   months: MonthRow[];
   income: Record<string, number>;
   details: DetailItem[];
-  categories: CatOption[];
 }) {
   const router = useRouter();
   const [pending, start] = React.useTransition();
@@ -87,19 +77,15 @@ export function MonthlyBreakdown({
   const selected = months.find((m) => m.month === openMonth) ?? null;
   const monthItems = openMonth ? details.filter((d) => d.month === openMonth) : [];
 
-  const grouped = {
-    needs: categories.filter((c) => c.budget_group === "needs"),
-    wants: categories.filter((c) => c.budget_group === "wants"),
-    savings: categories.filter((c) => c.budget_group === "savings"),
-    unclassified: categories.filter((c) => !c.budget_group),
-  };
-
-  function changeCategory(id: string, value: string) {
+  function changeGroup(id: string, value: string) {
     start(async () => {
-      const res = await setTransactionCategory(id, value === NONE ? null : value);
-      if (!res.ok) toast.error(res.error ?? "Failed to recategorize.");
+      const res = await setTransactionBudgetGroup(
+        id,
+        value === NONE ? null : (value as "needs" | "wants" | "savings"),
+      );
+      if (!res.ok) toast.error(res.error ?? "Failed to classify.");
       else {
-        toast.success("Recategorized.");
+        toast.success("Classification updated.");
         router.refresh();
       }
     });
@@ -159,7 +145,7 @@ export function MonthlyBreakdown({
           <DialogHeader>
             <DialogTitle>{selected?.label} — expense breakdown</DialogTitle>
             <DialogDescription>
-              Change any expense&apos;s category to move it between needs / wants / savings.
+              Set each expense as Needs, Wants, or Savings — you decide per transaction.
             </DialogDescription>
           </DialogHeader>
 
@@ -186,29 +172,23 @@ export function MonthlyBreakdown({
                           <div className="truncate">{d.description}</div>
                           <div className="text-xs text-muted-foreground">
                             {fmtDate(d.date, "short")}
+                            {d.category ? ` · ${d.category}` : ""}
                             {d.split ? ` · your share of ${fmtMoney(d.full, { cents: true })} (÷${d.split})` : ""}
                           </div>
                         </div>
                         <Select
-                          value={d.categoryId ?? NONE}
-                          onValueChange={(v) => changeCategory(d.id, v)}
+                          value={d.group === "unclassified" ? NONE : d.group}
+                          onValueChange={(v) => changeGroup(d.id, v)}
                           disabled={pending}
                         >
-                          <SelectTrigger className="h-7 w-36 shrink-0 text-xs">
-                            <SelectValue placeholder="Uncategorized" />
+                          <SelectTrigger className="h-7 w-32 shrink-0 text-xs">
+                            <SelectValue placeholder="Unclassified" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value={NONE}>Uncategorized</SelectItem>
-                            {(["needs", "wants", "savings", "unclassified"] as const).map((gk) =>
-                              grouped[gk].length ? (
-                                <SelectGroup key={gk}>
-                                  <SelectLabel className="capitalize">{gk}</SelectLabel>
-                                  {grouped[gk].map((c) => (
-                                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                                  ))}
-                                </SelectGroup>
-                              ) : null,
-                            )}
+                            <SelectItem value={NONE}>Unclassified</SelectItem>
+                            <SelectItem value="needs">Needs</SelectItem>
+                            <SelectItem value="wants">Wants</SelectItem>
+                            <SelectItem value="savings">Savings</SelectItem>
                           </SelectContent>
                         </Select>
                         <Money value={d.amount} cents className="w-20 shrink-0 text-right tnum" />

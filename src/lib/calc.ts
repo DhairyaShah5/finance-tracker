@@ -15,9 +15,26 @@ import { monthKey, monthLabel } from "@/lib/format";
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
+export type BudgetGroup = "needs" | "wants" | "savings";
+
 /** Signed cash amount: inflow positive, outflow negative. */
 export function signed(t: Pick<TransactionRow, "direction" | "amount">): number {
   return t.direction === "inflow" ? t.amount : -t.amount;
+}
+
+/**
+ * The arrival capital (wire from home, forex card, opening cash). These inflows
+ * ARE the starting balance, so they're not counted as income — counting them
+ * would double the starting funds.
+ */
+const ARRIVAL_DEPOSIT = /wire transfer from home|forex card to bofa|initial cash deposit/i;
+export function isArrivalDeposit(t: Pick<TransactionRow, "description">): boolean {
+  return ARRIVAL_DEPOSIT.test(t.description);
+}
+
+/** A transaction the user classified as savings (set aside, not consumed). */
+export function isSavingsTxn(t: Pick<TransactionRow, "budget_group">): boolean {
+  return t.budget_group === "savings";
 }
 
 /**
@@ -61,10 +78,9 @@ export function monthlyBudget(settings: Pick<SettingsRow, "starting_funds" | "bu
 
 export function buildMonthlySummaries(
   txns: TransactionRow[],
-  opts: { monthlyBudget: number; openingBalance: number; savingsCategoryIds?: Set<string> },
+  opts: { monthlyBudget: number; openingBalance: number },
 ): MonthlySummary[] {
   const budget = opts.monthlyBudget;
-  const savings = opts.savingsCategoryIds ?? new Set<string>();
   const byMonth = new Map<string, { expenses: number; inflow: number }>();
 
   for (const t of txns) {
@@ -72,9 +88,9 @@ export function buildMonthlySummaries(
     const key = monthKey(t.txn_date);
     const bucket = byMonth.get(key) ?? { expenses: 0, inflow: 0 };
     if (t.direction === "outflow") {
-      if (t.category_id && savings.has(t.category_id)) continue; // savings isn't an expense
+      if (isSavingsTxn(t)) continue; // savings isn't an expense
       bucket.expenses += myAmount(t); // only your share of split expenses
-    } else bucket.inflow += t.amount;
+    } else if (!isArrivalDeposit(t)) bucket.inflow += t.amount; // arrival = starting balance
     byMonth.set(key, bucket);
   }
 
@@ -165,7 +181,7 @@ export function categoryTotals(
   for (const t of txns) {
     if (t.direction !== "outflow") continue;
     // Savings (investments, vault) are not spending — keep them out of the breakdown.
-    if (t.category_id && byId.get(t.category_id)?.budget_group === "savings") continue;
+    if (isSavingsTxn(t)) continue;
     const share = myAmount(t); // your share only (handles transfers / friend / split)
     if (share === 0) continue;
     const key = t.category_id;
@@ -201,17 +217,13 @@ export interface MonthGroups {
   total: number;
 }
 
-export function budgetGroupsByMonth(
-  txns: TransactionRow[],
-  categories: CategoryRow[],
-): MonthGroups[] {
-  const groupById = new Map(categories.map((c) => [c.id, c.budget_group]));
+export function budgetGroupsByMonth(txns: TransactionRow[]): MonthGroups[] {
   const byMonth = new Map<string, Omit<MonthGroups, "month" | "label" | "total">>();
   for (const t of txns) {
     if (t.direction !== "outflow" || t.is_transfer) continue;
     const share = myAmount(t); // your share only
     if (share === 0) continue;
-    const g = t.category_id ? groupById.get(t.category_id) : null;
+    const g = t.budget_group; // each transaction carries its own classification
     const m = monthKey(t.txn_date);
     const b = byMonth.get(m) ?? { needs: 0, wants: 0, savings: 0, unclassified: 0 };
     if (g === "needs") b.needs += share;
@@ -236,11 +248,52 @@ export function budgetGroupsByMonth(
     });
 }
 
-/** Set of category ids classified as savings (investments, vaults). */
-export function savingsCategoryIds(
-  categories: Pick<CategoryRow, "id" | "budget_group">[],
-): Set<string> {
-  return new Set(categories.filter((c) => c.budget_group === "savings").map((c) => c.id));
+// ---------------------------------------------------------------------------
+// Reconciliation — proves the cash identity:
+//   starting + income − spending − savings − netToOthers = current balance
+// Every dollar lands in exactly one bucket, so the waterfall closes to the cent.
+// ---------------------------------------------------------------------------
+export interface Reconciliation {
+  starting: number; // arrival capital (settings.starting_funds)
+  income: number; // counted inflows (paychecks etc.) — excludes arrival & transfers
+  spending: number; // your share of non-savings consumption
+  savings: number; // your share of savings outflows (investments, vault)
+  netToOthers: number; // net money fronted for friends, less reimbursements/cashback/refunds
+  currentBalance: number; // = net worth (the ground-truth account total)
+}
+
+/**
+ * Decompose the ledger into the five reconciling buckets. `netToOthers` is the
+ * balancing figure — money that left through the "excluded" bucket (fronting for
+ * friends, internal transfers to non-net-worth accounts, split shares you
+ * covered) net of everything that came back (reimbursements, cashback, refunds).
+ * Computing it as the residual guarantees the identity always closes exactly.
+ */
+export function reconcile(
+  txns: TransactionRow[],
+  settings: Pick<SettingsRow, "starting_funds">,
+  netWorth: number,
+): Reconciliation {
+  let income = 0;
+  let spending = 0;
+  let savings = 0;
+  for (const t of txns) {
+    if (t.is_transfer) continue;
+    if (t.direction === "inflow") {
+      if (!isArrivalDeposit(t)) income += t.amount;
+    } else if (isSavingsTxn(t)) {
+      savings += myAmount(t);
+    } else {
+      spending += myAmount(t);
+    }
+  }
+  const starting = round2(settings.starting_funds);
+  income = round2(income);
+  spending = round2(spending);
+  savings = round2(savings);
+  const currentBalance = round2(netWorth);
+  const netToOthers = round2(starting + income - spending - savings - currentBalance);
+  return { starting, income, spending, savings, netToOthers, currentBalance };
 }
 
 /** Monthly income (counted = paycheck inflows) keyed by month. */

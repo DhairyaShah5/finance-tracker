@@ -140,6 +140,7 @@ export interface Database {
           debtor_id: string | null;
           is_transfer: boolean;
           split_count: number | null;
+          budget_group: "needs" | "wants" | "savings" | null;
           notes: string | null;
         } & Timestamps & WithUpdated;
         Insert: {
@@ -156,6 +157,7 @@ export interface Database {
           debtor_id?: string | null;
           is_transfer?: boolean;
           split_count?: number | null;
+          budget_group?: "needs" | "wants" | "savings" | null;
           notes?: string | null;
           created_at?: string;
           updated_at?: string;

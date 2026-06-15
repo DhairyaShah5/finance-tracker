@@ -24,7 +24,7 @@ export default async function InsightsPage() {
   const categories = categoriesRes.data ?? [];
   const catById = new Map(categories.map((c) => [c.id, c]));
 
-  const months = budgetGroupsByMonth(txns, categories);
+  const months = budgetGroupsByMonth(txns);
   const income = Object.fromEntries(incomeByMonth(txns));
 
   // Per-expense detail for the click-through modal (your share only).
@@ -38,19 +38,13 @@ export default async function InsightsPage() {
         date: t.txn_date,
         description: t.description,
         category: cat?.name ?? null,
-        categoryId: t.category_id,
-        group: (cat?.budget_group ?? "unclassified") as Group,
+        group: (t.budget_group ?? "unclassified") as Group,
         amount: myAmount(t),
         full: t.amount,
         split: t.split_count,
       };
     })
     .filter((d) => d.amount > 0);
-
-  const catOptions = categories
-    .slice()
-    .sort((a, b) => a.display_order - b.display_order)
-    .map((c) => ({ id: c.id, name: c.name, budget_group: c.budget_group }));
 
   const totals = months.reduce(
     (a, m) => ({
@@ -121,8 +115,8 @@ export default async function InsightsPage() {
           </div>
 
           <p className="text-xs text-muted-foreground">
-            Percentages are of classified spending. Reassign any category to needs / wants / savings
-            on the Settings page.
+            Percentages are of classified spending. Click any month below to set each expense as
+            Needs, Wants, or Savings.
             {totals.unclassified > 0 ? ` ${fmtMoney(totals.unclassified)} is still unclassified.` : ""}
           </p>
 
@@ -151,7 +145,7 @@ export default async function InsightsPage() {
             <StatCard label="Total spent" value={<Money value={totals.needs + totals.wants + totals.unclassified} />} hint="Excl. savings" />
           </div>
 
-          <MonthlyBreakdown months={months} income={income} details={details} categories={catOptions} />
+          <MonthlyBreakdown months={months} income={income} details={details} />
         </>
       )}
     </div>

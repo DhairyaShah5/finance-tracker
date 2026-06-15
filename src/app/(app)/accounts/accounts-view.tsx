@@ -17,6 +17,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -34,12 +41,26 @@ import { deleteAccount } from "./actions";
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
+interface BreakdownRow {
+  name: string;
+  sub: string;
+  value: number;
+}
+interface Breakdown {
+  title: string;
+  explain: string;
+  rows: BreakdownRow[];
+  total: number;
+  colored: boolean;
+}
+
 export function AccountsView({ activity }: { activity: AccountActivity[] }) {
   const router = useRouter();
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<AccountActivity | null>(null);
   const [transferOpen, setTransferOpen] = React.useState(false);
   const [transferPreset, setTransferPreset] = React.useState<TransferPreset | null>(null);
+  const [breakdown, setBreakdown] = React.useState<Breakdown | null>(null);
 
   function onTransfer() {
     setTransferPreset(null);
@@ -75,6 +96,41 @@ export function AccountsView({ activity }: { activity: AccountActivity[] }) {
   const netWorth = included.reduce((s, a) => s + a.balance, 0);
   const assets = activity.filter((a) => a.balance > 0).reduce((s, a) => s + a.balance, 0);
   const liabilities = activity.filter((a) => a.balance < 0).reduce((s, a) => s + a.balance, 0);
+
+  const rowOf = (a: AccountActivity): BreakdownRow => ({
+    name: a.account.name,
+    sub: `${a.account.bank} · ${a.account.type.replace("_", " ")}`,
+    value: a.balance,
+  });
+  function showNetWorth() {
+    setBreakdown({
+      title: "Net worth",
+      explain:
+        "Balances of every account counted toward net worth. Accounts marked “Excluded” (like a savings stash) are left out.",
+      rows: included.map(rowOf).sort((a, b) => b.value - a.value),
+      total: netWorth,
+      colored: true,
+    });
+  }
+  function showAssets() {
+    setBreakdown({
+      title: "Assets",
+      explain:
+        "Every account with a positive balance — cash, checking & savings. Includes excluded accounts like Marcus HYSA.",
+      rows: activity.filter((a) => a.balance > 0).map(rowOf).sort((a, b) => b.value - a.value),
+      total: assets,
+      colored: false,
+    });
+  }
+  function showOwed() {
+    setBreakdown({
+      title: "What you owe",
+      explain: "Credit cards and any account carrying a negative balance.",
+      rows: activity.filter((a) => a.balance < 0).map(rowOf).sort((a, b) => a.value - b.value),
+      total: liabilities,
+      colored: true,
+    });
+  }
 
   const donut = activity
     .filter((a) => a.balance > 0)
@@ -121,20 +177,23 @@ export function AccountsView({ activity }: { activity: AccountActivity[] }) {
         <StatCard
           label="Net worth"
           value={<Money value={netWorth} cents colored />}
-          hint="Across accounts in net worth"
+          hint="Across accounts in net worth · click to see how"
           icon={<Wallet className="size-4" />}
+          onClick={showNetWorth}
         />
         <StatCard
           label="Assets"
           value={<Money value={assets} cents />}
-          hint="Cash, checking & savings"
+          hint="Cash, checking & savings · click to see how"
           accent="positive"
+          onClick={showAssets}
         />
         <StatCard
           label="What you owe"
           value={<Money value={liabilities} cents />}
-          hint="Credit card balances"
+          hint="Credit card balances · click to see how"
           accent={liabilities < 0 ? "negative" : "default"}
+          onClick={showOwed}
         />
       </div>
 
@@ -239,6 +298,50 @@ export function AccountsView({ activity }: { activity: AccountActivity[] }) {
         accounts={activity}
         preset={transferPreset}
       />
+
+      <Dialog open={!!breakdown} onOpenChange={(v) => !v && setBreakdown(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{breakdown?.title}</DialogTitle>
+            <DialogDescription>{breakdown?.explain}</DialogDescription>
+          </DialogHeader>
+          {breakdown ? (
+            <div>
+              {breakdown.rows.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  Nothing here — every balance is zero{breakdown.title === "What you owe" ? " or positive" : ""}.
+                </p>
+              ) : (
+                <div className="divide-y divide-border/60">
+                  {breakdown.rows.map((r) => (
+                    <div key={r.name} className="flex items-center justify-between gap-3 py-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{r.name}</p>
+                        <p className="truncate text-xs capitalize text-muted-foreground">{r.sub}</p>
+                      </div>
+                      <Money
+                        value={r.value}
+                        cents
+                        colored={breakdown.colored}
+                        className="shrink-0 text-sm font-medium tnum"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="mt-1 flex items-center justify-between gap-3 border-t-2 border-border pt-2.5">
+                <span className="text-sm font-semibold">{breakdown.title}</span>
+                <Money
+                  value={breakdown.total}
+                  cents
+                  colored={breakdown.colored}
+                  className="shrink-0 text-base font-semibold tnum"
+                />
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

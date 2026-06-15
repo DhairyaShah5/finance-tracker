@@ -67,6 +67,7 @@ export function TransactionDialog({
   const [description, setDescription] = React.useState("");
   const [accountId, setAccountId] = React.useState("");
   const [categoryId, setCategoryId] = React.useState(NONE);
+  const [budgetGroup, setBudgetGroup] = React.useState(NONE);
   const [inflowTypeId, setInflowTypeId] = React.useState(NONE);
   const [whose, setWhose] = React.useState<string>("My");
   const [splitCount, setSplitCount] = React.useState("2");
@@ -83,6 +84,7 @@ export function TransactionDialog({
       setDescription(existing.description);
       setAccountId(existing.account_id);
       setCategoryId(existing.category_id ?? NONE);
+      setBudgetGroup(existing.budget_group ?? NONE);
       setInflowTypeId(existing.inflow_type_id ?? NONE);
       setWhose(existing.whose_expense ?? "My");
       setSplitCount(existing.split_count ? String(existing.split_count) : "2");
@@ -96,6 +98,7 @@ export function TransactionDialog({
       setDescription("");
       setAccountId(lookups.accounts[0]?.id ?? "");
       setCategoryId(NONE);
+      setBudgetGroup(NONE);
       setInflowTypeId(NONE);
       setWhose("My");
       setSplitCount("2");
@@ -118,6 +121,10 @@ export function TransactionDialog({
       split_count:
         mode === "expense" && (whose === "Group" || whose === "Roommates")
           ? Number(splitCount) || null
+          : null,
+      budget_group:
+        mode === "expense" && budgetGroup !== NONE
+          ? (budgetGroup as TransactionInput["budget_group"])
           : null,
       debtor_id: debtorId === NONE ? null : debtorId,
       notes: notes || null,
@@ -243,6 +250,22 @@ export function TransactionDialog({
 
           {mode === "expense" ? (
             <>
+              <div className="space-y-1.5">
+                <Label>Needs / Wants / Savings</Label>
+                <Select value={budgetGroup} onValueChange={setBudgetGroup}>
+                  <SelectTrigger><SelectValue placeholder="Unclassified" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NONE}>Unclassified</SelectItem>
+                    <SelectItem value="needs">Needs</SelectItem>
+                    <SelectItem value="wants">Wants</SelectItem>
+                    <SelectItem value="savings">Savings</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  You decide per transaction — Savings (investments, vault) is set aside, not spent.
+                </p>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label>Whose expense</Label>

@@ -16,6 +16,7 @@ const schema = z.object({
   debtor_id: z.string().uuid().nullable().optional(),
   is_transfer: z.boolean().optional(),
   split_count: z.coerce.number().int().positive().nullable().optional(),
+  budget_group: z.enum(["needs", "wants", "savings"]).nullable().optional(),
   notes: z.string().trim().nullable().optional(),
 });
 
@@ -44,6 +45,8 @@ function normalize(data: z.output<typeof schema>) {
         : null,
     debtor_id: isTransfer ? null : data.debtor_id || null,
     is_transfer: isTransfer,
+    // needs / wants / savings is per-transaction, only on real outflows.
+    budget_group: !isTransfer && data.direction === "outflow" ? data.budget_group ?? null : null,
     notes: data.notes || null,
   };
 }
@@ -106,6 +109,23 @@ export async function setTransactionCategory(id: string, categoryId: string | nu
   const { error } = await supabase
     .from("transactions")
     .update({ category_id: categoryId })
+    .eq("id", id)
+    .eq("user_id", user.id);
+  if (error) return { ok: false, error: error.message };
+  revalidate();
+  return { ok: true };
+}
+
+/** Set a transaction's 50/30/20 group — used from the Insights month breakdown. */
+export async function setTransactionBudgetGroup(
+  id: string,
+  group: "needs" | "wants" | "savings" | null,
+): Promise<ActionResult> {
+  const { supabase, user } = await authed();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const { error } = await supabase
+    .from("transactions")
+    .update({ budget_group: group })
     .eq("id", id)
     .eq("user_id", user.id);
   if (error) return { ok: false, error: error.message };
