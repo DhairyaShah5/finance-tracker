@@ -48,8 +48,12 @@ async function main() {
   const paycheckIds = new Set((it ?? []).filter((i) => /paycheck/i.test(i.name)).map((i) => i.id));
 
   const candidates = (tx ?? []).filter((t) => {
-    if (t.category_id !== null || t.is_transfer) return false;
-    if (t.direction === "inflow") return !(t.inflow_type_id && paycheckIds.has(t.inflow_type_id));
+    if (t.is_transfer) return false;
+    if (t.direction === "inflow") {
+      // inflows carry no category; exclude all that aren't paychecks
+      return !(t.inflow_type_id && paycheckIds.has(t.inflow_type_id));
+    }
+    // outflows fronted for others aren't your expense — regardless of category
     return t.whose_expense != null && FRIEND.has(t.whose_expense);
   });
 
