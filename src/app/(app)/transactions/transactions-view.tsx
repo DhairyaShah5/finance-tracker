@@ -4,9 +4,10 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
-  ArrowLeftRight,
   ChevronDown,
   ChevronRight,
+  Eye,
+  EyeOff,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -150,7 +151,7 @@ export function TransactionsView({
     setTransactionTransfer(t.id, !t.is_transfer).then((res) => {
       if (!res.ok) toast.error(res.error ?? "Failed to update.");
       else {
-        toast.success(t.is_transfer ? "Unmarked transfer." : "Marked as transfer.");
+        toast.success(t.is_transfer ? "Included in totals." : "Excluded from totals.");
         router.refresh();
       }
     });
@@ -168,7 +169,7 @@ export function TransactionsView({
           <div className="font-medium">{t.description}</div>
           {t.is_transfer ? (
             <Badge variant="secondary" className="mt-0.5 gap-1 text-[10px]">
-              <ArrowLeftRight className="size-2.5" /> Transfer
+              <EyeOff className="size-2.5" /> Excluded
             </Badge>
           ) : t.whose_expense && t.whose_expense !== "My" ? (
             <Badge variant="outline" className="mt-0.5 text-[10px]">{t.whose_expense}</Badge>
@@ -206,7 +207,8 @@ export function TransactionsView({
                 <Pencil className="size-4" /> Edit
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onToggleTransfer(t)}>
-                <ArrowLeftRight className="size-4" /> {t.is_transfer ? "Unmark transfer" : "Mark as transfer"}
+                {t.is_transfer ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+                {t.is_transfer ? "Include in totals" : "Exclude from totals"}
               </DropdownMenuItem>
               <DropdownMenuItem variant="destructive" onClick={() => onDelete(t)}>
                 <Trash2 className="size-4" /> Delete
@@ -237,7 +239,7 @@ export function TransactionsView({
             <SelectItem value="all">All types</SelectItem>
             <SelectItem value="outflow">Expenses</SelectItem>
             <SelectItem value="inflow">Income</SelectItem>
-            <SelectItem value="transfer">Transfers</SelectItem>
+            <SelectItem value="transfer">Excluded</SelectItem>
           </SelectContent>
         </Select>
         <Select value={account} onValueChange={setAccount}>
