@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Flag, Landmark, TrendingDown, TrendingUp, Users, Wallet } from "lucide-react";
+import { Flag, Landmark, PiggyBank, TrendingDown, TrendingUp, Users, Wallet } from "lucide-react";
 import { requireUser } from "@/lib/queries";
 import {
   buildMonthlySummaries,
@@ -7,6 +7,7 @@ import {
   categoryTotals,
   accountActivity,
   realBalanceTrend,
+  savingsCategoryIds,
   sumOwed,
   signed,
 } from "@/lib/calc";
@@ -45,19 +46,22 @@ export default async function DashboardPage() {
     .reduce((s, a) => s + a.balance, 0);
   const owed = sumOwed(debtors);
 
-  // Transfers between own accounts are excluded from income/spending.
+  // Savings (investments, vaults) and internal transfers are NOT spending.
+  const savingsIds = savingsCategoryIds(categories);
+  const isSavings = (t: (typeof txns)[number]) => !!t.category_id && savingsIds.has(t.category_id);
   const totalIn = txns.filter((t) => t.direction === "inflow" && !t.is_transfer).reduce((s, t) => s + t.amount, 0);
-  const totalOut = txns.filter((t) => t.direction === "outflow" && !t.is_transfer).reduce((s, t) => s + t.amount, 0);
+  const totalOut = txns
+    .filter((t) => t.direction === "outflow" && !t.is_transfer && !isSavings(t))
+    .reduce((s, t) => s + t.amount, 0);
+  const totalSaved = txns
+    .filter((t) => t.direction === "outflow" && !t.is_transfer && isSavings(t))
+    .reduce((s, t) => s + t.amount, 0);
 
-  // Accounts are the source of truth for "money I have". The balance trend
-  // chains to current net worth: opening seed = netWorth − net cash flow.
   const summaries = buildMonthlySummaries(txns, {
     monthlyBudget: monthlyBudget(settings),
-    openingBalance: netWorth - (totalIn - totalOut),
+    openingBalance: 0, // closing chain unused here; the trend uses realBalanceTrend
+    savingsCategoryIds: savingsIds,
   });
-
-  const thisMonthKey = new Date().toISOString().slice(0, 7);
-  const thisMonth = summaries.find((m) => m.month === thisMonthKey) ?? summaries[summaries.length - 1];
 
   // Chart series — balance trajectory from arrival capital to current net worth.
   // Exclude the arrival deposits themselves (they constitute the starting
@@ -109,11 +113,11 @@ export default async function DashboardPage() {
             <div>
               <p className="font-medium">No data yet</p>
               <p className="text-sm text-muted-foreground">
-                Import your Excel workbook from{" "}
-                <Link href="/settings" className="text-primary underline-offset-2 hover:underline">
-                  Settings
+                Add a transaction from the{" "}
+                <Link href="/transactions" className="text-primary underline-offset-2 hover:underline">
+                  Transactions
                 </Link>{" "}
-                or add a transaction to get started.
+                page to get started.
               </p>
             </div>
           </CardContent>
@@ -135,14 +139,11 @@ export default async function DashboardPage() {
               icon={<Wallet className="size-4" />}
             />
             <StatCard
-              label={`${thisMonth?.label.split(" ")[0] ?? "Month"} net spend`}
-              value={<Money value={thisMonth?.netSpending ?? 0} />}
-              hint={
-                thisMonth
-                  ? `${fmtMoney(Math.abs(thisMonth.variance))} ${thisMonth.variance >= 0 ? "under" : "over"} budget`
-                  : undefined
-              }
-              accent={thisMonth && thisMonth.variance >= 0 ? "positive" : "negative"}
+              label="Saved"
+              value={<Money value={totalSaved} />}
+              hint="Investments + vault"
+              accent="positive"
+              icon={<PiggyBank className="size-4" />}
             />
             <StatCard
               label="Total income"

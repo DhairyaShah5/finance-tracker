@@ -10,6 +10,7 @@ import {
   EyeOff,
   MoreHorizontal,
   Pencil,
+  PiggyBank,
   Plus,
   Search,
   Trash2,
@@ -34,7 +35,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Money } from "@/components/money";
 import { fmtDate, fmtMoney, hueColor, monthLabel, monthKey } from "@/lib/format";
-import { signed } from "@/lib/calc";
+import { savingsCategoryIds, signed } from "@/lib/calc";
 import type { TransactionRow } from "@/lib/database.types";
 import { TransactionDialog, type TxnLookups } from "./transaction-dialog";
 import { deleteTransaction, setTransactionTransfer } from "./actions";
@@ -52,6 +53,11 @@ export function TransactionsView({
   const catById = React.useMemo(
     () => new Map(lookups.categories.map((c) => [c.id, c])),
     [lookups.categories],
+  );
+  const savingsIds = React.useMemo(() => savingsCategoryIds(lookups.categories), [lookups.categories]);
+  const isSavings = React.useCallback(
+    (t: TransactionRow) => !!t.category_id && savingsIds.has(t.category_id),
+    [savingsIds],
   );
   const acctById = React.useMemo(
     () => new Map(lookups.accounts.map((a) => [a.id, a])),
@@ -106,17 +112,21 @@ export function TransactionsView({
     return [...map.entries()]
       .sort((a, b) => (a[0] < b[0] ? 1 : -1))
       .map(([key, txns]) => {
-        // Transfers between own accounts don't count as income/spending.
+        // Transfers and savings aren't income/spending.
         const real = txns.filter((t) => !t.is_transfer);
         const inflow = real.filter((t) => t.direction === "inflow").reduce((s, t) => s + t.amount, 0);
-        const outflow = real.filter((t) => t.direction === "outflow").reduce((s, t) => s + t.amount, 0);
+        const outflow = real
+          .filter((t) => t.direction === "outflow" && !isSavings(t))
+          .reduce((s, t) => s + t.amount, 0);
         return { key, label: monthLabel(key), txns, inflow, outflow, net: inflow - outflow };
       });
-  }, [filtered]);
+  }, [filtered, isSavings]);
 
   const real = filtered.filter((t) => !t.is_transfer);
   const totalIn = real.filter((t) => t.direction === "inflow").reduce((s, t) => s + t.amount, 0);
-  const totalOut = real.filter((t) => t.direction === "outflow").reduce((s, t) => s + t.amount, 0);
+  const totalOut = real
+    .filter((t) => t.direction === "outflow" && !isSavings(t))
+    .reduce((s, t) => s + t.amount, 0);
 
   function toggle(key: string) {
     setExpanded((prev) => {
@@ -170,6 +180,10 @@ export function TransactionsView({
           {t.is_transfer ? (
             <Badge variant="secondary" className="mt-0.5 gap-1 text-[10px]">
               <EyeOff className="size-2.5" /> Excluded
+            </Badge>
+          ) : isSavings(t) ? (
+            <Badge variant="secondary" className="mt-0.5 gap-1 text-[10px]">
+              <PiggyBank className="size-2.5" /> Savings
             </Badge>
           ) : t.whose_expense && t.whose_expense !== "My" ? (
             <Badge variant="outline" className="mt-0.5 text-[10px]">{t.whose_expense}</Badge>

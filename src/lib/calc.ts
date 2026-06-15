@@ -43,17 +43,20 @@ export function monthlyBudget(settings: Pick<SettingsRow, "starting_funds" | "bu
 
 export function buildMonthlySummaries(
   txns: TransactionRow[],
-  opts: { monthlyBudget: number; openingBalance: number },
+  opts: { monthlyBudget: number; openingBalance: number; savingsCategoryIds?: Set<string> },
 ): MonthlySummary[] {
   const budget = opts.monthlyBudget;
+  const savings = opts.savingsCategoryIds ?? new Set<string>();
   const byMonth = new Map<string, { expenses: number; inflow: number }>();
 
   for (const t of txns) {
     if (t.is_transfer) continue; // internal transfers aren't income/spending
     const key = monthKey(t.txn_date);
     const bucket = byMonth.get(key) ?? { expenses: 0, inflow: 0 };
-    if (t.direction === "outflow") bucket.expenses += t.amount;
-    else bucket.inflow += t.amount;
+    if (t.direction === "outflow") {
+      if (t.category_id && savings.has(t.category_id)) continue; // savings isn't an expense
+      bucket.expenses += t.amount;
+    } else bucket.inflow += t.amount;
     byMonth.set(key, bucket);
   }
 
@@ -143,6 +146,8 @@ export function categoryTotals(
   const agg = new Map<string | null, { total: number; count: number }>();
   for (const t of txns) {
     if (t.direction !== "outflow" || t.is_transfer) continue;
+    // Savings (investments, vault) are not spending — keep them out of the breakdown.
+    if (t.category_id && byId.get(t.category_id)?.budget_group === "savings") continue;
     const key = t.category_id;
     const cur = agg.get(key) ?? { total: 0, count: 0 };
     cur.total += t.amount;
@@ -207,6 +212,13 @@ export function budgetGroupsByMonth(
         total: round2(b.needs + b.wants + b.savings + b.unclassified),
       };
     });
+}
+
+/** Set of category ids classified as savings (investments, vaults). */
+export function savingsCategoryIds(
+  categories: Pick<CategoryRow, "id" | "budget_group">[],
+): Set<string> {
+  return new Set(categories.filter((c) => c.budget_group === "savings").map((c) => c.id));
 }
 
 /** Monthly income (counted = paycheck inflows) keyed by month. */
