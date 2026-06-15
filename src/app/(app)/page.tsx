@@ -59,9 +59,15 @@ export default async function DashboardPage() {
   const thisMonthKey = new Date().toISOString().slice(0, 7);
   const thisMonth = summaries.find((m) => m.month === thisMonthKey) ?? summaries[summaries.length - 1];
 
-  // Chart series — real balance trajectory, starting from your arrival capital
-  // and ending at current net worth.
-  const balanceTrend = realBalanceTrend(txns, netWorth);
+  // Chart series — balance trajectory from arrival capital to current net worth.
+  // Exclude the arrival deposits themselves (they constitute the starting
+  // balance, so counting them as flows would double-count). This matches the
+  // source workbook's monthly closing balances exactly.
+  const ARRIVAL_DEPOSIT = /wire transfer from home|forex card to bofa|initial cash deposit/i;
+  const balanceTrend = realBalanceTrend(
+    txns.filter((t) => !ARRIVAL_DEPOSIT.test(t.description)),
+    netWorth,
+  );
   const balanceSeries = [
     { label: "Start", balance: settings.starting_funds },
     ...balanceTrend.map((p) => ({ label: p.label.split(" ")[0], balance: p.balance })),
@@ -71,12 +77,10 @@ export default async function DashboardPage() {
     Spent: m.totalExpenses,
     Budget: m.budget,
   }));
-  const topCats = catTotals.slice(0, 7);
-  const restTotal = catTotals.slice(7).reduce((s, c) => s + c.total, 0);
-  const donut = [
-    ...topCats.map((c) => ({ name: c.name, value: c.total, color: hueColor(c.hue) })),
-    ...(restTotal > 0 ? [{ name: "Other", value: restTotal, color: "var(--muted-foreground)" }] : []),
-  ];
+  // Show every category individually (no "Other" bucket).
+  const donut = catTotals
+    .filter((c) => c.total > 0)
+    .map((c) => ({ name: c.name, value: c.total, color: hueColor(c.hue) }));
 
   // Recent transactions
   const catById = new Map(categories.map((c) => [c.id, c]));

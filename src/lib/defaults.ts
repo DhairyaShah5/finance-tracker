@@ -13,24 +13,27 @@ export const ACCOUNT_TYPES = [
 ] as const;
 export type AccountType = (typeof ACCOUNT_TYPES)[number];
 
-// 16 expense categories (workbook D2:D17) with OKLCH hue angles for charts.
-export const DEFAULT_CATEGORIES: { name: string; color_hue: number }[] = [
-  { name: "Rent and Utilities", color_hue: 250 },
-  { name: "Groceries", color_hue: 150 },
-  { name: "Entertainment", color_hue: 300 },
-  { name: "Home Improvement", color_hue: 30 },
-  { name: "Transportation", color_hue: 230 },
-  { name: "Health Insurance", color_hue: 10 },
-  { name: "Eating Out", color_hue: 50 },
-  { name: "Shopping", color_hue: 330 },
-  { name: "Health & Fitness", color_hue: 170 },
-  { name: "Electronics", color_hue: 270 },
-  { name: "Personal Care", color_hue: 350 },
-  { name: "Investment", color_hue: 140 },
-  { name: "Miscellaneous", color_hue: 90 },
-  { name: "Gifting", color_hue: 320 },
-  { name: "Travelling", color_hue: 200 },
-  { name: "Education & Fees", color_hue: 260 },
+export type BudgetGroup = "needs" | "wants" | "savings";
+
+// 16 expense categories (workbook D2:D17) with OKLCH hue angles for charts and a
+// 50/30/20 classification (editable per-category in Settings).
+export const DEFAULT_CATEGORIES: { name: string; color_hue: number; budget_group: BudgetGroup }[] = [
+  { name: "Rent and Utilities", color_hue: 250, budget_group: "needs" },
+  { name: "Groceries", color_hue: 150, budget_group: "needs" },
+  { name: "Entertainment", color_hue: 300, budget_group: "wants" },
+  { name: "Home Improvement", color_hue: 30, budget_group: "wants" },
+  { name: "Transportation", color_hue: 230, budget_group: "needs" },
+  { name: "Health Insurance", color_hue: 10, budget_group: "needs" },
+  { name: "Eating Out", color_hue: 50, budget_group: "wants" },
+  { name: "Shopping", color_hue: 330, budget_group: "wants" },
+  { name: "Health & Fitness", color_hue: 170, budget_group: "needs" },
+  { name: "Electronics", color_hue: 270, budget_group: "wants" },
+  { name: "Personal Care", color_hue: 350, budget_group: "needs" },
+  { name: "Investment", color_hue: 140, budget_group: "savings" },
+  { name: "Miscellaneous", color_hue: 90, budget_group: "wants" },
+  { name: "Gifting", color_hue: 320, budget_group: "wants" },
+  { name: "Travelling", color_hue: 200, budget_group: "wants" },
+  { name: "Education & Fees", color_hue: 260, budget_group: "needs" },
 ];
 
 // 6 inflow types (workbook H2:H7). "Reimbursement" was misspelled in the

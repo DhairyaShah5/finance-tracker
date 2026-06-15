@@ -164,6 +164,62 @@ export function categoryTotals(
 }
 
 // ---------------------------------------------------------------------------
+// 50 / 30 / 20 budgeting — needs / wants / savings split of spending per month
+// ---------------------------------------------------------------------------
+export interface MonthGroups {
+  month: string;
+  label: string;
+  needs: number;
+  wants: number;
+  savings: number;
+  unclassified: number;
+  total: number;
+}
+
+export function budgetGroupsByMonth(
+  txns: TransactionRow[],
+  categories: CategoryRow[],
+): MonthGroups[] {
+  const groupById = new Map(categories.map((c) => [c.id, c.budget_group]));
+  const byMonth = new Map<string, Omit<MonthGroups, "month" | "label" | "total">>();
+  for (const t of txns) {
+    if (t.direction !== "outflow" || t.is_transfer) continue;
+    const g = t.category_id ? groupById.get(t.category_id) : null;
+    const m = monthKey(t.txn_date);
+    const b = byMonth.get(m) ?? { needs: 0, wants: 0, savings: 0, unclassified: 0 };
+    if (g === "needs") b.needs += t.amount;
+    else if (g === "wants") b.wants += t.amount;
+    else if (g === "savings") b.savings += t.amount;
+    else b.unclassified += t.amount;
+    byMonth.set(m, b);
+  }
+  return [...byMonth.keys()]
+    .sort()
+    .map((m) => {
+      const b = byMonth.get(m)!;
+      return {
+        month: m,
+        label: monthLabel(m),
+        needs: round2(b.needs),
+        wants: round2(b.wants),
+        savings: round2(b.savings),
+        unclassified: round2(b.unclassified),
+        total: round2(b.needs + b.wants + b.savings + b.unclassified),
+      };
+    });
+}
+
+/** Monthly income (counted = paycheck inflows) keyed by month. */
+export function incomeByMonth(txns: TransactionRow[]): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const t of txns) {
+    if (t.direction !== "inflow" || t.is_transfer) continue;
+    m.set(monthKey(t.txn_date), round2((m.get(monthKey(t.txn_date)) ?? 0) + t.amount));
+  }
+  return m;
+}
+
+// ---------------------------------------------------------------------------
 // Per-account activity & balances
 // ---------------------------------------------------------------------------
 export interface AccountActivity {

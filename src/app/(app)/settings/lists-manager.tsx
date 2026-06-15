@@ -10,6 +10,13 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Card,
   CardContent,
   CardDescription,
@@ -18,6 +25,10 @@ import {
 } from "@/components/ui/card";
 import { hueColor } from "@/lib/format";
 import type { CategoryRow, InflowTypeRow } from "@/lib/database.types";
+
+const GROUP_NONE = "__none__";
+type GroupValue = "needs" | "wants" | "savings" | null;
+const asGroup = (v: string): GroupValue => (v === GROUP_NONE ? null : (v as GroupValue));
 import {
   createCategory,
   createInflowType,
@@ -46,20 +57,23 @@ function CategoriesSection({ categories }: { categories: CategoryRow[] }) {
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [editName, setEditName] = React.useState("");
   const [editHue, setEditHue] = React.useState("250");
+  const [editGroup, setEditGroup] = React.useState<string>(GROUP_NONE);
   const [newName, setNewName] = React.useState("");
   const [newHue, setNewHue] = React.useState("250");
+  const [newGroup, setNewGroup] = React.useState<string>("needs");
 
   function beginEdit(c: CategoryRow) {
     setEditingId(c.id);
     setEditName(c.name);
     setEditHue(String(c.color_hue ?? 250));
+    setEditGroup(c.budget_group ?? GROUP_NONE);
   }
   function cancelEdit() {
     setEditingId(null);
   }
   function saveEdit(id: string) {
     start(async () => {
-      const res = await updateCategory(id, { name: editName, color_hue: editHue });
+      const res = await updateCategory(id, { name: editName, color_hue: editHue, budget_group: asGroup(editGroup) });
       if (!res.ok) {
         toast.error(res.error ?? "Failed to update category.");
         return;
@@ -87,7 +101,7 @@ function CategoriesSection({ categories }: { categories: CategoryRow[] }) {
       return;
     }
     start(async () => {
-      const res = await createCategory({ name: newName, color_hue: newHue });
+      const res = await createCategory({ name: newName, color_hue: newHue, budget_group: asGroup(newGroup) });
       if (!res.ok) {
         toast.error(res.error ?? "Failed to add category.");
         return;
@@ -95,6 +109,7 @@ function CategoriesSection({ categories }: { categories: CategoryRow[] }) {
       toast.success("Category added.");
       setNewName("");
       setNewHue("250");
+      setNewGroup("needs");
       router.refresh();
     });
   }
@@ -133,6 +148,15 @@ function CategoriesSection({ categories }: { categories: CategoryRow[] }) {
                     className="h-8 w-20"
                     aria-label="Color hue"
                   />
+                  <Select value={editGroup} onValueChange={setEditGroup}>
+                    <SelectTrigger className="h-8 w-28" aria-label="Budget group"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="needs">Needs</SelectItem>
+                      <SelectItem value="wants">Wants</SelectItem>
+                      <SelectItem value="savings">Savings</SelectItem>
+                      <SelectItem value={GROUP_NONE}>Unclassified</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <Button size="icon" className="size-8" onClick={() => saveEdit(c.id)} disabled={pending}>
                     <Check className="size-4" />
                   </Button>
@@ -144,7 +168,11 @@ function CategoriesSection({ categories }: { categories: CategoryRow[] }) {
                 <div key={c.id} className="flex items-center gap-3 px-3 py-2">
                   <Swatch hue={c.color_hue} />
                   <span className="flex-1 truncate text-sm font-medium">{c.name}</span>
-                  <span className="text-xs text-muted-foreground tnum">hue {c.color_hue ?? 250}</span>
+                  {c.budget_group ? (
+                    <Badge variant="outline" className="text-[10px] capitalize">{c.budget_group}</Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-[10px] text-muted-foreground">unclassified</Badge>
+                  )}
                   <Button size="icon" variant="ghost" className="size-8" onClick={() => beginEdit(c)} disabled={pending}>
                     <Pencil className="size-4" />
                   </Button>
@@ -187,6 +215,18 @@ function CategoriesSection({ categories }: { categories: CategoryRow[] }) {
               onChange={(e) => setNewHue(e.target.value)}
               className="w-24"
             />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Group</Label>
+            <Select value={newGroup} onValueChange={setNewGroup}>
+              <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="needs">Needs</SelectItem>
+                <SelectItem value="wants">Wants</SelectItem>
+                <SelectItem value="savings">Savings</SelectItem>
+                <SelectItem value={GROUP_NONE}>Unclassified</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <Button onClick={add} disabled={pending} className="gap-1.5">
             <Plus className="size-4" /> Add

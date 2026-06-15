@@ -92,10 +92,12 @@ export function BarSeriesChart({
   data,
   series,
   height = 240,
+  stacked = false,
 }: {
   data: SeriesPoint[];
   series: { key: string; name: string; color?: string }[];
   height?: number;
+  stacked?: boolean;
 }) {
   return (
     <ResponsiveContainer width="100%" height={height}>
@@ -115,7 +117,8 @@ export function BarSeriesChart({
             dataKey={s.key}
             name={s.name}
             fill={s.color ?? `var(--chart-${i + 1})`}
-            radius={[4, 4, 0, 0]}
+            stackId={stacked ? "stack" : undefined}
+            radius={stacked ? (i === series.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]) : [4, 4, 0, 0]}
             maxBarSize={48}
           />
         ))}

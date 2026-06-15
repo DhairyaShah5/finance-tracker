@@ -118,6 +118,8 @@ export function parseWorkbook(input: ArrayBuffer | Uint8Array | Buffer): ParsedW
       const inflow = toNum(row[5]); // F
       const description = toStr(row[2]) ?? "(no description)"; // C
 
+      // A row may carry BOTH an outflow and an inflow (e.g. a purchase that was
+      // partly settled the same line). Emit a transaction for each — not else-if.
       if (outflow != null && outflow !== 0) {
         const whose = toStr(row[7]); // H
         transactions.push({
@@ -130,7 +132,8 @@ export function parseWorkbook(input: ArrayBuffer | Uint8Array | Buffer): ParsedW
           inflowTypeName: null,
           whoseExpense: whose && WHOSE.has(whose) ? (whose as ParsedTransaction["whoseExpense"]) : "My",
         });
-      } else if (inflow != null && inflow !== 0) {
+      }
+      if (inflow != null && inflow !== 0) {
         transactions.push({
           txn_date,
           categoryName: toStr(row[1]),
