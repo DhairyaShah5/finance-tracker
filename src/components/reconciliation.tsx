@@ -19,8 +19,9 @@ interface Line {
  * Every dollar is in exactly one row, so it always sums to the bottom line.
  */
 export function ReconciliationFlow({ data }: { data: Reconciliation }) {
-  // Net fronted for friends is the balancing figure: positive = money went out
-  // (paid for others, net of reimbursements); negative = net came back to you.
+  // Balancing figure for the two-way wash: you cover costs for friends and they
+  // cover costs for you, plus reimbursements/cashback/refunds. Positive = a bit
+  // more left your accounts than came back; negative = a bit more came back.
   const out = data.netToOthers;
   const lines: Line[] = [
     {
@@ -33,8 +34,8 @@ export function ReconciliationFlow({ data }: { data: Reconciliation }) {
     { label: "Spending", hint: "Your share of consumption", value: -data.spending, op: "−", tone: "negative" },
     { label: "Savings", hint: "Investments + vault, set aside", value: -data.savings, op: "−", tone: "muted" },
     {
-      label: "Fronted for friends (net)",
-      hint: "Net of reimbursements, cashback & refunds — settles up informally",
+      label: "Shared & settled (net)",
+      hint: "You and friends cover costs for each other, plus reimbursements & cashback — washes out informally",
       value: -out,
       op: out >= 0 ? "−" : "+",
       tone: "muted",
