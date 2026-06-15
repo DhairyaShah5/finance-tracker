@@ -1,26 +1,174 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+  Finance Tracker — "Nordic SaaS" design system.
+  Cool slate neutrals + a single calm blue accent, on a true-white surface.
+  Light is the default theme. Deliberately distinct from the warm cream +
+  violet/gold boutique look of the Summer Planner.
+*/
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --radius: 0.5rem;
+
+  /* Surfaces & ink (cool slate) */
+  --background: oklch(0.995 0.001 240);
+  --foreground: oklch(0.21 0.03 256);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.21 0.03 256);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.21 0.03 256);
+
+  /* Calm blue accent */
+  --primary: oklch(0.52 0.16 256);
+  --primary-foreground: oklch(0.985 0.002 247);
+
+  --secondary: oklch(0.968 0.007 247);
+  --secondary-foreground: oklch(0.28 0.03 256);
+  --muted: oklch(0.968 0.007 247);
+  --muted-foreground: oklch(0.55 0.03 257);
+  --accent: oklch(0.952 0.012 252);
+  --accent-foreground: oklch(0.32 0.05 256);
+
+  --destructive: oklch(0.58 0.2 25);
+  --border: oklch(0.927 0.013 256);
+  --input: oklch(0.927 0.013 256);
+  --ring: oklch(0.52 0.16 256);
+
+  /* Finance semantics */
+  --positive: oklch(0.62 0.14 162);          /* income / under budget */
+  --positive-foreground: oklch(0.985 0.01 162);
+  --negative: oklch(0.58 0.2 25);            /* expense / over budget */
+  --negative-foreground: oklch(0.985 0.01 25);
+  --warning: oklch(0.74 0.15 75);
+
+  /* Chart ramp (cool, restrained) */
+  --chart-1: oklch(0.52 0.16 256);           /* blue */
+  --chart-2: oklch(0.62 0.14 162);           /* teal-green */
+  --chart-3: oklch(0.66 0.14 230);           /* sky */
+  --chart-4: oklch(0.7 0.13 300);            /* muted violet */
+  --chart-5: oklch(0.74 0.15 75);            /* amber */
+
+  /* Sidebar */
+  --sidebar: oklch(0.985 0.002 247);
+  --sidebar-foreground: oklch(0.21 0.03 256);
+  --sidebar-primary: oklch(0.52 0.16 256);
+  --sidebar-primary-foreground: oklch(0.985 0.002 247);
+  --sidebar-accent: oklch(0.968 0.007 247);
+  --sidebar-accent-foreground: oklch(0.28 0.03 256);
+  --sidebar-border: oklch(0.927 0.013 256);
+  --sidebar-ring: oklch(0.52 0.16 256);
+}
+
+.dark {
+  --background: oklch(0.18 0.02 256);
+  --foreground: oklch(0.96 0.004 247);
+  --card: oklch(0.22 0.022 256);
+  --card-foreground: oklch(0.96 0.004 247);
+  --popover: oklch(0.22 0.022 256);
+  --popover-foreground: oklch(0.96 0.004 247);
+
+  --primary: oklch(0.7 0.14 252);
+  --primary-foreground: oklch(0.2 0.03 256);
+
+  --secondary: oklch(0.27 0.022 256);
+  --secondary-foreground: oklch(0.96 0.004 247);
+  --muted: oklch(0.27 0.022 256);
+  --muted-foreground: oklch(0.7 0.02 257);
+  --accent: oklch(0.3 0.025 256);
+  --accent-foreground: oklch(0.96 0.004 247);
+
+  --destructive: oklch(0.65 0.18 25);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: oklch(0.7 0.14 252);
+
+  --positive: oklch(0.7 0.14 162);
+  --positive-foreground: oklch(0.18 0.03 162);
+  --negative: oklch(0.68 0.18 25);
+  --negative-foreground: oklch(0.18 0.03 25);
+  --warning: oklch(0.8 0.14 80);
+
+  --chart-1: oklch(0.7 0.14 252);
+  --chart-2: oklch(0.7 0.14 162);
+  --chart-3: oklch(0.72 0.13 230);
+  --chart-4: oklch(0.75 0.13 300);
+  --chart-5: oklch(0.8 0.14 80);
+
+  --sidebar: oklch(0.2 0.02 256);
+  --sidebar-foreground: oklch(0.96 0.004 247);
+  --sidebar-primary: oklch(0.7 0.14 252);
+  --sidebar-primary-foreground: oklch(0.18 0.03 256);
+  --sidebar-accent: oklch(0.27 0.022 256);
+  --sidebar-accent-foreground: oklch(0.96 0.004 247);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.7 0.14 252);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-positive: var(--positive);
+  --color-positive-foreground: var(--positive-foreground);
+  --color-negative: var(--negative);
+  --color-negative-foreground: var(--negative-foreground);
+  --color-warning: var(--warning);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
   }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Tabular figures for all money/number contexts */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
 }

@@ -1,0 +1,119 @@
+"use client";
+
+import * as React from "react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { Wallet } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { fmtMoney } from "@/lib/format";
+import type { SettingsRow } from "@/lib/database.types";
+import { updateSettings, type SettingsInput } from "./actions";
+
+export function SettingsForm({ settings }: { settings: SettingsRow }) {
+  const router = useRouter();
+  const [pending, start] = React.useTransition();
+
+  const [currency, setCurrency] = React.useState(settings.currency);
+  const [startingFunds, setStartingFunds] = React.useState(String(settings.starting_funds));
+  const [budgetMonths, setBudgetMonths] = React.useState(String(settings.budget_months));
+
+  const funds = Number(startingFunds);
+  const months = Number(budgetMonths);
+  const derivedBudget =
+    Number.isFinite(funds) && Number.isFinite(months) && months > 0 ? funds / months : 0;
+
+  function submit() {
+    const input: SettingsInput = {
+      currency: currency.trim(),
+      starting_funds: startingFunds,
+      budget_months: budgetMonths,
+    };
+    start(async () => {
+      const res = await updateSettings(input);
+      if (!res.ok) {
+        toast.error(res.error ?? "Failed to save settings.");
+        return;
+      }
+      toast.success("Settings saved.");
+      router.refresh();
+    });
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Budget &amp; preferences
+        </CardTitle>
+        <CardDescription>
+          Your monthly budget is derived from total starting funds spread across the budget period.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Derived monthly budget — shown prominently */}
+        <div className="flex items-center gap-4 rounded-lg border border-border bg-secondary/40 p-4">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+            <Wallet className="size-5" />
+          </span>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Monthly budget
+            </p>
+            <p className="text-2xl font-semibold tnum text-foreground">
+              {fmtMoney(derivedBudget, { cents: true })}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {fmtMoney(funds || 0)} ÷ {Number.isFinite(months) && months > 0 ? months : "—"} months
+            </p>
+          </div>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="currency">Currency</Label>
+            <Input
+              id="currency"
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              placeholder="USD"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="starting_funds">Total starting funds</Label>
+            <Input
+              id="starting_funds"
+              type="number"
+              step="0.01"
+              min="0"
+              inputMode="decimal"
+              value={startingFunds}
+              onChange={(e) => setStartingFunds(e.target.value)}
+              placeholder="0.00"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="budget_months">Budget period (months)</Label>
+            <Input
+              id="budget_months"
+              type="number"
+              step="1"
+              min="1"
+              inputMode="numeric"
+              value={budgetMonths}
+              onChange={(e) => setBudgetMonths(e.target.value)}
+              placeholder="12"
+            />
+          </div>
+        </div>
+      </CardContent>
+      <CardFooter className="justify-end border-t pt-6">
+        <Button onClick={submit} disabled={pending}>
+          {pending ? "Saving…" : "Save settings"}
+        </Button>
+      </CardFooter>
+    </Card>
+  );
+}
