@@ -37,10 +37,10 @@ function isActive(pathname: string, href: string) {
 function Brand() {
   return (
     <Link href="/" className="group flex items-center gap-2.5 px-3">
-      <span className="flex size-9 items-center justify-center rounded-xl bg-brand text-white shadow-md shadow-primary/30 transition-transform duration-300 group-hover:scale-105 group-hover:rotate-3">
+      <span className="flex size-9 items-center justify-center rounded-xl grad-brand text-white shadow-md shadow-primary/30 transition-transform duration-300 group-hover:scale-105 group-hover:rotate-3">
         <Wallet className="size-5" />
       </span>
-      <span className="text-base font-bold tracking-tight text-gradient">Finance Tracker</span>
+      <span className="text-base font-bold tracking-tight grad-text">Finance Tracker</span>
     </Link>
   );
 }
@@ -64,7 +64,7 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
             )}
           >
             {active ? (
-              <span className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-brand" aria-hidden />
+              <span className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full grad-brand" aria-hidden />
             ) : null}
             <Icon
               className={cn(

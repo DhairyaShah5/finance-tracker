@@ -11,7 +11,7 @@ export function PageHeader({
     <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div className="space-y-1.5">
         <div className="flex items-center gap-3">
-          <span className="h-7 w-1.5 rounded-full bg-brand" aria-hidden />
+          <span className="h-7 w-1.5 rounded-full grad-brand" aria-hidden />
           <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">{title}</h1>
         </div>
         {description ? (

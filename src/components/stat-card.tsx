@@ -49,7 +49,7 @@ export function StatCard({
     >
       {/* faint brand wash that warms on hover */}
       <div
-        className="pointer-events-none absolute -right-8 -top-10 size-28 rounded-full bg-brand opacity-[0.07] blur-2xl transition-opacity duration-300 group-hover:opacity-20"
+        className="pointer-events-none absolute -right-8 -top-10 size-28 rounded-full grad-brand opacity-[0.07] blur-2xl transition-opacity duration-300 group-hover:opacity-20"
         aria-hidden
       />
       <CardContent className="relative flex flex-col gap-2 p-4 sm:p-5">
@@ -61,7 +61,7 @@ export function StatCard({
             <span
               className={cn(
                 "flex size-9 items-center justify-center rounded-xl text-white shadow-sm shadow-primary/30 transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-3 [&_svg]:size-4",
-                iconClassName ?? "bg-brand",
+                iconClassName ?? "grad-brand",
               )}
             >
               {icon}

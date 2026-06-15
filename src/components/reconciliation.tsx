@@ -71,13 +71,13 @@ export function ReconciliationFlow({ data }: { data: Reconciliation }) {
       <div className="divide-y divide-border/60">{flow.map(row)}</div>
       <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-primary/[0.06] px-3.5 py-3 ring-1 ring-primary/15">
         <div className="flex items-baseline gap-2.5">
-          <span className="flex size-5 items-center justify-center rounded-md bg-brand text-xs font-bold text-white">=</span>
+          <span className="flex size-5 items-center justify-center rounded-md grad-brand text-xs font-bold text-white">=</span>
           <div>
             <p className="text-sm font-semibold">{total.label}</p>
             {total.hint ? <p className="text-xs text-muted-foreground">{total.hint}</p> : null}
           </div>
         </div>
-        <Money value={total.value} cents className="shrink-0 text-lg font-bold tnum text-gradient" />
+        <Money value={total.value} cents className="shrink-0 text-lg font-bold tnum grad-text" />
       </div>
     </div>
   );
