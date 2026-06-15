@@ -141,7 +141,7 @@ export function MonthlyBreakdown({
       </Card>
 
       <Dialog open={!!openMonth} onOpenChange={(v) => !v && setOpenMonth(null)}>
-        <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-xl">
+        <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>{selected?.label} — expense breakdown</DialogTitle>
             <DialogDescription>
@@ -149,7 +149,7 @@ export function MonthlyBreakdown({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="-mr-3 flex-1 space-y-5 overflow-y-auto pr-3">
+          <div className="-mr-3 min-h-0 flex-1 space-y-5 overflow-y-auto pr-3">
             {GROUPS.map((g) => {
               const items = monthItems
                 .filter((d) => d.group === g.key)
