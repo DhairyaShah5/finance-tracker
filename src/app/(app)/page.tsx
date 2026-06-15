@@ -49,8 +49,8 @@ export default async function DashboardPage() {
   const owed = sumOwed(debtors);
 
   // Full reconciliation — every dollar in exactly one bucket:
-  // starting + income − spending − savings − net-fronted = net worth.
-  const recon = reconcile(txns, settings, netWorth);
+  // income (incl. arrival capital) − spending − savings − net-fronted = net worth.
+  const recon = reconcile(txns, netWorth);
 
   const summaries = buildMonthlySummaries(txns, {
     monthlyBudget: monthlyBudget(settings),
@@ -141,7 +141,7 @@ export default async function DashboardPage() {
             <StatCard
               label="Total income"
               value={<Money value={recon.income} />}
-              hint="Paychecks (excl. arrival)"
+              hint={`Incl. ${fmtMoney(recon.arrivalCapital)} arrival capital`}
               accent="positive"
               icon={<TrendingUp className="size-4" />}
             />

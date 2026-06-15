@@ -254,8 +254,8 @@ export function budgetGroupsByMonth(txns: TransactionRow[]): MonthGroups[] {
 // Every dollar lands in exactly one bucket, so the waterfall closes to the cent.
 // ---------------------------------------------------------------------------
 export interface Reconciliation {
-  starting: number; // arrival capital (settings.starting_funds)
-  income: number; // counted inflows (paychecks etc.) — excludes arrival & transfers
+  income: number; // every inflow that stayed yours — paychecks + the arrival capital
+  arrivalCapital: number; // the slice of income you arrived with (shown for context)
   spending: number; // your share of non-savings consumption
   savings: number; // your share of savings outflows (investments, vault)
   netToOthers: number; // net money fronted for friends, less reimbursements/cashback/refunds
@@ -263,37 +263,38 @@ export interface Reconciliation {
 }
 
 /**
- * Decompose the ledger into the five reconciling buckets. `netToOthers` is the
- * balancing figure — money that left through the "excluded" bucket (fronting for
- * friends, internal transfers to non-net-worth accounts, split shares you
- * covered) net of everything that came back (reimbursements, cashback, refunds).
- * Computing it as the residual guarantees the identity always closes exactly.
+ * Decompose the ledger into reconciling buckets. The arrival capital (the money
+ * you flew in with) IS income — your early expenses came straight out of it — so
+ * it's counted in `income`, not treated as a separate opening balance.
+ * `netToOthers` is the balancing figure: money that left through the "excluded"
+ * bucket (fronting for friends, internal transfers to non-net-worth accounts,
+ * split shares you covered) net of everything that came back (reimbursements,
+ * cashback, refunds). Computing it as the residual guarantees the identity
+ * always closes exactly:  income − spending − savings − netToOthers = balance.
  */
-export function reconcile(
-  txns: TransactionRow[],
-  settings: Pick<SettingsRow, "starting_funds">,
-  netWorth: number,
-): Reconciliation {
+export function reconcile(txns: TransactionRow[], netWorth: number): Reconciliation {
   let income = 0;
+  let arrivalCapital = 0;
   let spending = 0;
   let savings = 0;
   for (const t of txns) {
     if (t.is_transfer) continue;
     if (t.direction === "inflow") {
-      if (!isArrivalDeposit(t)) income += t.amount;
+      income += t.amount;
+      if (isArrivalDeposit(t)) arrivalCapital += t.amount;
     } else if (isSavingsTxn(t)) {
       savings += myAmount(t);
     } else {
       spending += myAmount(t);
     }
   }
-  const starting = round2(settings.starting_funds);
   income = round2(income);
+  arrivalCapital = round2(arrivalCapital);
   spending = round2(spending);
   savings = round2(savings);
   const currentBalance = round2(netWorth);
-  const netToOthers = round2(starting + income - spending - savings - currentBalance);
-  return { starting, income, spending, savings, netToOthers, currentBalance };
+  const netToOthers = round2(income - spending - savings - currentBalance);
+  return { income, arrivalCapital, spending, savings, netToOthers, currentBalance };
 }
 
 /** Monthly income (counted = paycheck inflows) keyed by month. */

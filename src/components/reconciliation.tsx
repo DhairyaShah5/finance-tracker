@@ -1,4 +1,5 @@
 import { Money } from "@/components/money";
+import { fmtMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { Reconciliation } from "@/lib/calc";
 
@@ -13,7 +14,8 @@ interface Line {
 
 /**
  * Renders the cash identity as a waterfall that closes to the current balance:
- *   Starting + Income − Spending − Savings − Net fronted = Available funds.
+ *   Income − Spending − Savings − Net fronted = Available funds.
+ * Income includes the arrival capital (your early expenses came out of it).
  * Every dollar is in exactly one row, so it always sums to the bottom line.
  */
 export function ReconciliationFlow({ data }: { data: Reconciliation }) {
@@ -21,8 +23,13 @@ export function ReconciliationFlow({ data }: { data: Reconciliation }) {
   // (paid for others, net of reimbursements); negative = net came back to you.
   const out = data.netToOthers;
   const lines: Line[] = [
-    { label: "Starting balance", hint: "Arrived with", value: data.starting, op: "", tone: "neutral" },
-    { label: "Income", hint: "Paychecks (excl. arrival)", value: data.income, op: "+", tone: "positive" },
+    {
+      label: "Income",
+      hint: `Paychecks + the ${fmtMoney(data.arrivalCapital)} you arrived with`,
+      value: data.income,
+      op: "",
+      tone: "positive",
+    },
     { label: "Spending", hint: "Your share of consumption", value: -data.spending, op: "−", tone: "negative" },
     { label: "Savings", hint: "Investments + vault, set aside", value: -data.savings, op: "−", tone: "muted" },
     {

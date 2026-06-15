@@ -46,12 +46,10 @@ const CURRENT_MONTH = new Date().toISOString().slice(0, 7);
 export function TransactionsView({
   transactions,
   lookups,
-  starting,
   netWorth,
 }: {
   transactions: TransactionRow[];
   lookups: TxnLookups;
-  starting: number;
   netWorth: number;
 }) {
   const router = useRouter();
@@ -125,7 +123,7 @@ export function TransactionsView({
   const totalIn = real.filter((t) => t.direction === "inflow").reduce((s, t) => s + t.amount, 0);
   const totalOut = real.filter((t) => !isSavingsTxn(t)).reduce((s, t) => s + myAmount(t), 0);
   // Full-ledger reconciliation (independent of the active filter).
-  const recon = reconcile(transactions, { starting_funds: starting }, netWorth);
+  const recon = reconcile(transactions, netWorth);
 
   function toggle(key: string) {
     setExpanded((prev) => {
