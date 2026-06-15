@@ -7,7 +7,6 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
-  Legend,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -24,16 +23,48 @@ const AXIS = {
   axisLine: false,
 };
 
-const tooltipStyle = {
-  background: "var(--popover)",
-  border: "1px solid var(--border)",
-  borderRadius: 8,
-  fontSize: 12,
-  color: "var(--popover-foreground)",
-  boxShadow: "0 6px 16px -8px rgb(0 0 0 / 0.25)",
-};
-
 const moneyTick = (v: number) => fmtMoney(v, { cents: false });
+
+interface TipPayload {
+  name?: string;
+  value?: number | string;
+  color?: string;
+  fill?: string;
+  payload?: Record<string, unknown>;
+}
+
+/** Glassy, themed tooltip shared by every chart. */
+function ChartTooltip({
+  active,
+  payload,
+  label,
+  total,
+}: {
+  active?: boolean;
+  payload?: TipPayload[];
+  label?: string;
+  total?: number;
+}) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="min-w-36 rounded-xl border border-border/70 bg-popover/85 px-3 py-2 text-xs shadow-xl backdrop-blur-md">
+      {label ? <p className="mb-1.5 font-semibold">{label}</p> : null}
+      <div className="flex flex-col gap-1">
+        {payload.map((p, i) => {
+          const v = Number(p.value);
+          const share = total ? ` · ${((v / total) * 100).toFixed(0)}%` : "";
+          return (
+            <div key={i} className="flex items-center gap-2">
+              <span className="size-2.5 rounded-full" style={{ background: p.color ?? p.fill }} />
+              <span className="text-muted-foreground">{p.name}</span>
+              <span className="ml-auto font-semibold tnum">{fmtMoney(v, { cents: true })}{share}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export interface SeriesPoint {
   label: string;
@@ -44,7 +75,7 @@ export interface SeriesPoint {
 export function TrendChart({
   data,
   series,
-  height = 240,
+  height = 260,
 }: {
   data: SeriesPoint[];
   series: { key: string; name: string; color?: string }[];
@@ -52,36 +83,40 @@ export function TrendChart({
 }) {
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <AreaChart data={data} margin={{ top: 8, right: 8, left: 4, bottom: 0 }}>
+      <AreaChart data={data} margin={{ top: 10, right: 10, left: 4, bottom: 0 }}>
         <defs>
-          {series.map((s, i) => (
-            <linearGradient key={s.key} id={`grad-${s.key}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={s.color ?? `var(--chart-${i + 1})`} stopOpacity={0.25} />
-              <stop offset="100%" stopColor={s.color ?? `var(--chart-${i + 1})`} stopOpacity={0} />
-            </linearGradient>
-          ))}
+          {series.map((s, i) => {
+            const c = s.color ?? `var(--chart-${i + 1})`;
+            return (
+              <linearGradient key={s.key} id={`grad-${s.key}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={c} stopOpacity={0.4} />
+                <stop offset="60%" stopColor={c} stopOpacity={0.12} />
+                <stop offset="100%" stopColor={c} stopOpacity={0} />
+              </linearGradient>
+            );
+          })}
         </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-        <XAxis dataKey="label" {...AXIS} />
+        <CartesianGrid strokeDasharray="4 4" stroke="var(--border)" vertical={false} />
+        <XAxis dataKey="label" {...AXIS} dy={4} />
         <YAxis {...AXIS} width={52} tickFormatter={moneyTick} />
-        <Tooltip
-          contentStyle={tooltipStyle}
-          formatter={(value, name) => [fmtMoney(Number(value), { cents: true }), String(name)]}
-        />
-        {series.length > 1 ? <Legend wrapperStyle={{ fontSize: 12 }} /> : null}
-        {series.map((s, i) => (
-          <Area
-            key={s.key}
-            type="monotone"
-            dataKey={s.key}
-            name={s.name}
-            stroke={s.color ?? `var(--chart-${i + 1})`}
-            strokeWidth={2}
-            fill={`url(#grad-${s.key})`}
-            dot={false}
-            activeDot={{ r: 4 }}
-          />
-        ))}
+        <Tooltip cursor={{ stroke: "var(--border)", strokeWidth: 1 }} content={<ChartTooltip />} />
+        {series.map((s, i) => {
+          const c = s.color ?? `var(--chart-${i + 1})`;
+          return (
+            <Area
+              key={s.key}
+              type="monotone"
+              dataKey={s.key}
+              name={s.name}
+              stroke={c}
+              strokeWidth={2.5}
+              fill={`url(#grad-${s.key})`}
+              dot={false}
+              activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--background)" }}
+              animationDuration={900}
+            />
+          );
+        })}
       </AreaChart>
     </ResponsiveContainer>
   );
@@ -91,7 +126,7 @@ export function TrendChart({
 export function BarSeriesChart({
   data,
   series,
-  height = 240,
+  height = 260,
   stacked = false,
 }: {
   data: SeriesPoint[];
@@ -101,25 +136,32 @@ export function BarSeriesChart({
 }) {
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <BarChart data={data} margin={{ top: 8, right: 8, left: 4, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-        <XAxis dataKey="label" {...AXIS} />
+      <BarChart data={data} margin={{ top: 10, right: 10, left: 4, bottom: 0 }}>
+        <defs>
+          {series.map((s, i) => {
+            const c = s.color ?? `var(--chart-${i + 1})`;
+            return (
+              <linearGradient key={s.key} id={`bar-${s.key}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={c} stopOpacity={1} />
+                <stop offset="100%" stopColor={c} stopOpacity={0.55} />
+              </linearGradient>
+            );
+          })}
+        </defs>
+        <CartesianGrid strokeDasharray="4 4" stroke="var(--border)" vertical={false} />
+        <XAxis dataKey="label" {...AXIS} dy={4} />
         <YAxis {...AXIS} width={52} tickFormatter={moneyTick} />
-        <Tooltip
-          cursor={{ fill: "var(--secondary)", opacity: 0.5 }}
-          contentStyle={tooltipStyle}
-          formatter={(value, name) => [fmtMoney(Number(value), { cents: true }), String(name)]}
-        />
-        {series.length > 1 ? <Legend wrapperStyle={{ fontSize: 12 }} /> : null}
+        <Tooltip cursor={{ fill: "var(--muted)", opacity: 0.4, radius: 8 }} content={<ChartTooltip />} />
         {series.map((s, i) => (
           <Bar
             key={s.key}
             dataKey={s.key}
             name={s.name}
-            fill={s.color ?? `var(--chart-${i + 1})`}
+            fill={`url(#bar-${s.key})`}
             stackId={stacked ? "stack" : undefined}
-            radius={stacked ? (i === series.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]) : [4, 4, 0, 0]}
-            maxBarSize={48}
+            radius={stacked ? (i === series.length - 1 ? [6, 6, 0, 0] : [0, 0, 0, 0]) : [6, 6, 0, 0]}
+            maxBarSize={46}
+            animationDuration={800}
           />
         ))}
       </BarChart>
@@ -133,8 +175,8 @@ export interface DonutSlice {
   color: string;
 }
 
-/** Donut breakdown (category / account composition). No legend — hover a slice
- *  for its name, amount, and share — so the wheel itself can be large. */
+/** Donut breakdown (category / account composition). Hover a slice for its
+ *  name, amount and share — so the wheel itself can be large. */
 export function DonutChart({ data, height = 300 }: { data: DonutSlice[]; height?: number }) {
   const total = data.reduce((s, d) => s + d.value, 0);
   return (
@@ -144,22 +186,18 @@ export function DonutChart({ data, height = 300 }: { data: DonutSlice[]; height?
           data={data}
           dataKey="value"
           nameKey="name"
-          innerRadius="55%"
+          innerRadius="58%"
           outerRadius="92%"
-          paddingAngle={1.5}
+          paddingAngle={2}
+          cornerRadius={6}
           strokeWidth={0}
+          animationDuration={800}
         >
           {data.map((d) => (
             <Cell key={d.name} fill={d.color} />
           ))}
         </Pie>
-        <Tooltip
-          contentStyle={tooltipStyle}
-          formatter={(value, name) => {
-            const v = Number(value);
-            return [`${fmtMoney(v, { cents: true })} (${total ? ((v / total) * 100).toFixed(0) : 0}%)`, String(name)];
-          }}
-        />
+        <Tooltip content={<ChartTooltip total={total} />} />
       </PieChart>
     </ResponsiveContainer>
   );

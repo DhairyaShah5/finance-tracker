@@ -36,11 +36,11 @@ function isActive(pathname: string, href: string) {
 
 function Brand() {
   return (
-    <Link href="/" className="flex items-center gap-2.5 px-2">
-      <span className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
-        <Wallet className="size-4" />
+    <Link href="/" className="group flex items-center gap-2.5 px-3">
+      <span className="flex size-9 items-center justify-center rounded-xl bg-brand text-white shadow-md shadow-primary/30 transition-transform duration-300 group-hover:scale-105 group-hover:rotate-3">
+        <Wallet className="size-5" />
       </span>
-      <span className="text-sm font-semibold tracking-tight">Finance Tracker</span>
+      <span className="text-base font-bold tracking-tight text-gradient">Finance Tracker</span>
     </Link>
   );
 }
@@ -48,7 +48,7 @@ function Brand() {
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   return (
-    <nav className="flex flex-1 flex-col gap-0.5 px-2">
+    <nav className="flex flex-1 flex-col gap-1 px-3">
       {NAV.map(({ href, label, icon: Icon }) => {
         const active = isActive(pathname, href);
         return (
@@ -57,13 +57,21 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
             href={href}
             onClick={onNavigate}
             className={cn(
-              "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+              "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200",
               active
-                ? "bg-secondary text-foreground"
-                : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
+                ? "bg-accent text-foreground shadow-sm"
+                : "text-muted-foreground hover:bg-secondary/70 hover:text-foreground",
             )}
           >
-            <Icon className="size-4 shrink-0" />
+            {active ? (
+              <span className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-brand" aria-hidden />
+            ) : null}
+            <Icon
+              className={cn(
+                "size-4 shrink-0 transition-transform duration-200 group-hover:scale-110",
+                active ? "text-primary" : "",
+              )}
+            />
             {label}
           </Link>
         );
@@ -107,7 +115,7 @@ export function AppSidebar({ email }: { email: string }) {
   return (
     <>
       {/* Desktop sidebar */}
-      <aside className="hidden w-60 shrink-0 flex-col gap-4 border-r border-border bg-sidebar py-4 lg:flex">
+      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col gap-5 border-r border-border bg-sidebar/70 py-5 backdrop-blur-xl lg:flex">
         <Brand />
         <NavLinks />
         <SidebarFooter email={email} />

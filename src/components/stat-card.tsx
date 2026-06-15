@@ -8,16 +8,31 @@ interface StatCardProps {
   icon?: React.ReactNode;
   accent?: "default" | "positive" | "negative";
   className?: string;
+  /** Override the icon chip background (defaults to the brand gradient). */
+  iconClassName?: string;
   /** When provided, the tile becomes a button that opens a breakdown. */
   onClick?: () => void;
 }
 
 /** Compact KPI tile used across the dashboard and feature pages. */
-export function StatCard({ label, value, hint, icon, accent = "default", className, onClick }: StatCardProps) {
+export function StatCard({
+  label,
+  value,
+  hint,
+  icon,
+  accent = "default",
+  className,
+  iconClassName,
+  onClick,
+}: StatCardProps) {
   const interactive = !!onClick;
   return (
     <Card
-      className={cn("gap-0 py-0", interactive && "cursor-pointer transition-colors hover:border-ring/60 hover:bg-muted/40", className)}
+      className={cn(
+        "group relative gap-0 overflow-hidden py-0 surface hover-lift",
+        interactive && "cursor-pointer hover:border-ring/60",
+        className,
+      )}
       role={interactive ? "button" : undefined}
       tabIndex={interactive ? 0 : undefined}
       onClick={onClick}
@@ -32,16 +47,30 @@ export function StatCard({ label, value, hint, icon, accent = "default", classNa
           : undefined
       }
     >
-      <CardContent className="flex flex-col gap-1.5 p-4">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+      {/* faint brand wash that warms on hover */}
+      <div
+        className="pointer-events-none absolute -right-8 -top-10 size-28 rounded-full bg-brand opacity-[0.07] blur-2xl transition-opacity duration-300 group-hover:opacity-20"
+        aria-hidden
+      />
+      <CardContent className="relative flex flex-col gap-2 p-4 sm:p-5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[0.7rem] font-medium uppercase tracking-wider text-muted-foreground">
             {label}
           </span>
-          {icon ? <span className="text-muted-foreground">{icon}</span> : null}
+          {icon ? (
+            <span
+              className={cn(
+                "flex size-9 items-center justify-center rounded-xl text-white shadow-sm shadow-primary/30 transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-3 [&_svg]:size-4",
+                iconClassName ?? "bg-brand",
+              )}
+            >
+              {icon}
+            </span>
+          ) : null}
         </div>
         <div
           className={cn(
-            "text-2xl font-semibold tnum",
+            "text-2xl font-semibold tracking-tight tnum sm:text-[1.7rem]",
             accent === "positive" && "text-positive",
             accent === "negative" && "text-negative",
           )}

@@ -256,26 +256,26 @@ export function budgetGroupsByMonth(txns: TransactionRow[]): MonthGroups[] {
 export interface Reconciliation {
   income: number; // every inflow that stayed yours — paychecks + the arrival capital
   arrivalCapital: number; // the slice of income you arrived with (shown for context)
-  spending: number; // your share of non-savings consumption
+  consumption: number; // your share of non-savings outflows (categorized spending)
+  settled: number; // tiny net of informal friend/shared washes folded into spending
+  spending: number; // consumption + settled — the figure that closes the identity
   savings: number; // your share of savings outflows (investments, vault)
-  netToOthers: number; // net money fronted for friends, less reimbursements/cashback/refunds
   currentBalance: number; // = net worth (the ground-truth account total)
 }
 
 /**
- * Decompose the ledger into reconciling buckets. The arrival capital (the money
- * you flew in with) IS income — your early expenses came straight out of it — so
- * it's counted in `income`, not treated as a separate opening balance.
- * `netToOthers` is the balancing figure: money that left through the "excluded"
- * bucket (fronting for friends, internal transfers to non-net-worth accounts,
- * split shares you covered) net of everything that came back (reimbursements,
- * cashback, refunds). Computing it as the residual guarantees the identity
- * always closes exactly:  income − spending − savings − netToOthers = balance.
+ * Decompose the ledger so the cash identity closes on three terms:
+ *   income − spending − savings = current balance.
+ * The arrival capital (the money you flew in with) IS income — your early
+ * expenses came straight out of it. Friend-fronting and shared splits settle
+ * informally and never net perfectly, leaving a tiny residual (`settled`); we
+ * fold it into spending rather than show a separate line, so the waterfall stays
+ * clean and exact.
  */
 export function reconcile(txns: TransactionRow[], netWorth: number): Reconciliation {
   let income = 0;
   let arrivalCapital = 0;
-  let spending = 0;
+  let consumption = 0;
   let savings = 0;
   for (const t of txns) {
     if (t.is_transfer) continue;
@@ -285,16 +285,18 @@ export function reconcile(txns: TransactionRow[], netWorth: number): Reconciliat
     } else if (isSavingsTxn(t)) {
       savings += myAmount(t);
     } else {
-      spending += myAmount(t);
+      consumption += myAmount(t);
     }
   }
   income = round2(income);
   arrivalCapital = round2(arrivalCapital);
-  spending = round2(spending);
+  consumption = round2(consumption);
   savings = round2(savings);
   const currentBalance = round2(netWorth);
-  const netToOthers = round2(income - spending - savings - currentBalance);
-  return { income, arrivalCapital, spending, savings, netToOthers, currentBalance };
+  // Residual from imperfect informal settlements — folded into spending.
+  const settled = round2(income - consumption - savings - currentBalance);
+  const spending = round2(consumption + settled);
+  return { income, arrivalCapital, consumption, settled, spending, savings, currentBalance };
 }
 
 /** Monthly income (counted = paycheck inflows) keyed by month. */

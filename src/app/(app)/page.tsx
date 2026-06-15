@@ -16,6 +16,8 @@ import { fmtMoney, fmtDate, hueColor } from "@/lib/format";
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
 import { Money } from "@/components/money";
+import { CountUp } from "@/components/count-up";
+import { Reveal } from "@/components/reveal";
 import { ReconciliationFlow } from "@/components/reconciliation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -119,95 +121,117 @@ export default async function DashboardPage() {
         <>
           {/* KPI grid */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
-            <StatCard
-              label="Starting balance"
-              value={<Money value={settings.starting_funds} cents />}
-              hint="Arrived with"
-              icon={<Flag className="size-4" />}
-            />
-            <StatCard
-              label="Available funds"
-              value={<Money value={netWorth} cents />}
-              hint={`${fmtMoney(netWorth - settings.starting_funds, { sign: true })} since arrival`}
-              icon={<Wallet className="size-4" />}
-            />
-            <StatCard
-              label="Saved"
-              value={<Money value={recon.savings} cents />}
-              hint="Investments + vault"
-              accent="positive"
-              icon={<PiggyBank className="size-4" />}
-            />
-            <StatCard
-              label="Total income"
-              value={<Money value={recon.income - recon.arrivalCapital} cents />}
-              hint="Paychecks · excludes arrival capital"
-              accent="positive"
-              icon={<TrendingUp className="size-4" />}
-            />
-            <StatCard
-              label="Total spent"
-              value={<Money value={recon.spending} cents />}
-              icon={<TrendingDown className="size-4" />}
-            />
-            <StatCard
-              label="Owed to me"
-              value={<Money value={owed} cents />}
-              hint={debtors.length ? `${debtors.length} debtor${debtors.length === 1 ? "" : "s"}` : "All settled"}
-              icon={<Users className="size-4" />}
-            />
+            <Reveal delay={0}>
+              <StatCard
+                label="Starting balance"
+                value={<CountUp value={settings.starting_funds} cents />}
+                hint="Arrived with"
+                icon={<Flag />}
+              />
+            </Reveal>
+            <Reveal delay={60}>
+              <StatCard
+                label="Available funds"
+                value={<CountUp value={netWorth} cents />}
+                hint={`${fmtMoney(netWorth - settings.starting_funds, { sign: true })} since arrival`}
+                icon={<Wallet />}
+              />
+            </Reveal>
+            <Reveal delay={120}>
+              <StatCard
+                label="Saved"
+                value={<CountUp value={recon.savings} cents />}
+                hint="Investments + vault"
+                accent="positive"
+                icon={<PiggyBank />}
+                iconClassName="bg-positive"
+              />
+            </Reveal>
+            <Reveal delay={180}>
+              <StatCard
+                label="Total income"
+                value={<CountUp value={recon.income - recon.arrivalCapital} cents />}
+                hint="Paychecks · excludes arrival capital"
+                accent="positive"
+                icon={<TrendingUp />}
+                iconClassName="bg-positive"
+              />
+            </Reveal>
+            <Reveal delay={240}>
+              <StatCard
+                label="Total spent"
+                value={<CountUp value={recon.spending} cents />}
+                icon={<TrendingDown />}
+                iconClassName="bg-negative"
+              />
+            </Reveal>
+            <Reveal delay={300}>
+              <StatCard
+                label="Owed to me"
+                value={<CountUp value={owed} cents />}
+                hint={debtors.length ? `${debtors.length} debtor${debtors.length === 1 ? "" : "s"}` : "All settled"}
+                icon={<Users />}
+              />
+            </Reveal>
           </div>
 
           {/* The cash identity — how the current balance is reached, to the cent */}
-          <Card>
-            <CardHeader>
-              <CardTitle>How your balance adds up</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="max-w-xl">
-                <ReconciliationFlow data={recon} />
-              </div>
-            </CardContent>
-          </Card>
+          <Reveal delay={340}>
+            <Card className="surface">
+              <CardHeader>
+                <CardTitle>How your balance adds up</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="max-w-xl">
+                  <ReconciliationFlow data={recon} />
+                </div>
+              </CardContent>
+            </Card>
+          </Reveal>
 
           {/* Charts */}
-          <div className="grid gap-4 lg:grid-cols-5">
-            <Card className="lg:col-span-3">
-              <CardHeader>
-                <CardTitle>Balance over time</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <TrendChart data={balanceSeries} series={[{ key: "balance", name: "Closing balance" }]} />
-              </CardContent>
-            </Card>
-            <Card className="lg:col-span-2">
-              <CardHeader>
-                <CardTitle>Spending by category</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <DonutChart data={donut} />
-              </CardContent>
-            </Card>
-          </div>
+          <Reveal delay={400}>
+            <div className="grid gap-4 lg:grid-cols-5">
+              <Card className="surface lg:col-span-3">
+                <CardHeader>
+                  <CardTitle>Balance over time</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <TrendChart data={balanceSeries} series={[{ key: "balance", name: "Closing balance" }]} />
+                </CardContent>
+              </Card>
+              <Card className="surface lg:col-span-2">
+                <CardHeader>
+                  <CardTitle>Spending by category</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <DonutChart data={donut} />
+                </CardContent>
+              </Card>
+            </div>
+          </Reveal>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Monthly spending vs budget</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <BarSeriesChart
-                data={budgetSeries}
-                series={[
-                  { key: "Spent", name: "Spent", color: "var(--chart-1)" },
-                  { key: "Budget", name: "Budget", color: "var(--chart-5)" },
-                ]}
-              />
-            </CardContent>
-          </Card>
+          <Reveal delay={460}>
+            <Card className="surface">
+              <CardHeader>
+                <CardTitle>Monthly spending vs budget</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <BarSeriesChart
+                  data={budgetSeries}
+                  series={[
+                    { key: "Spent", name: "Spent", color: "var(--chart-1)" },
+                    { key: "Budget", name: "Budget", color: "var(--chart-5)" },
+                  ]}
+                />
+              </CardContent>
+            </Card>
+          </Reveal>
 
           {/* Recent + accounts */}
-          <div className="grid gap-4 lg:grid-cols-5">
-            <Card className="lg:col-span-3">
+          <Reveal delay={520}>
+            <div className="grid gap-4 lg:grid-cols-5">
+              <Card className="surface lg:col-span-3">
               <CardHeader className="flex-row items-center justify-between">
                 <CardTitle>Recent transactions</CardTitle>
                 <Link href="/transactions" className="text-sm text-primary underline-offset-2 hover:underline">
@@ -242,7 +266,7 @@ export default async function DashboardPage() {
                 })}
               </CardContent>
             </Card>
-            <Card className="lg:col-span-2">
+            <Card className="surface lg:col-span-2">
               <CardHeader className="flex-row items-center justify-between">
                 <CardTitle>Accounts</CardTitle>
                 <Link href="/accounts" className="text-sm text-primary underline-offset-2 hover:underline">
@@ -271,7 +295,8 @@ export default async function DashboardPage() {
                 ))}
               </CardContent>
             </Card>
-          </div>
+            </div>
+          </Reveal>
         </>
       )}
     </div>

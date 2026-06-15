@@ -19,10 +19,6 @@ interface Line {
  * Every dollar is in exactly one row, so it always sums to the bottom line.
  */
 export function ReconciliationFlow({ data }: { data: Reconciliation }) {
-  // Balancing figure for the two-way wash: you cover costs for friends and they
-  // cover costs for you, plus reimbursements/cashback/refunds. Positive = a bit
-  // more left your accounts than came back; negative = a bit more came back.
-  const out = data.netToOthers;
   const lines: Line[] = [
     {
       label: "Income",
@@ -33,45 +29,56 @@ export function ReconciliationFlow({ data }: { data: Reconciliation }) {
     },
     { label: "Spending", hint: "Your share of consumption", value: -data.spending, op: "−", tone: "negative" },
     { label: "Savings", hint: "Investments + vault, set aside", value: -data.savings, op: "−", tone: "muted" },
-    {
-      label: "Shared & settled (net)",
-      hint: "You and friends cover costs for each other, plus reimbursements & cashback — washes out informally",
-      value: -out,
-      op: out >= 0 ? "−" : "+",
-      tone: "muted",
-    },
     { label: "Available funds", hint: "What you can spend now", value: data.currentBalance, op: "=", tone: "neutral", strong: true },
   ];
 
-  return (
-    <div className="divide-y divide-border/60">
-      {lines.map((l) => (
-        <div
-          key={l.label}
-          className={cn("flex items-center justify-between gap-3 py-2", l.strong && "pt-2.5")}
+  const flow = lines.filter((l) => !l.strong);
+  const total = lines.find((l) => l.strong)!;
+
+  const row = (l: Line) => (
+    <div key={l.label} className="flex items-center justify-between gap-3 py-2.5">
+      <div className="flex items-baseline gap-2.5">
+        <span
+          className={cn(
+            "flex size-5 items-center justify-center rounded-md text-xs font-semibold tabular-nums",
+            l.op === "+" && "bg-positive/10 text-positive",
+            l.op === "−" && "bg-negative/10 text-negative",
+            l.op === "" && "bg-muted text-muted-foreground",
+          )}
         >
-          <div className="flex items-baseline gap-2">
-            <span className={cn("w-3 text-center text-sm tabular-nums text-muted-foreground", l.op === "=" && "text-foreground")}>
-              {l.op}
-            </span>
-            <div>
-              <p className={cn("text-sm", l.strong ? "font-semibold" : "font-medium")}>{l.label}</p>
-              {l.hint ? <p className="text-xs text-muted-foreground">{l.hint}</p> : null}
-            </div>
-          </div>
-          <Money
-            value={Math.abs(l.value)}
-            cents
-            className={cn(
-              "tnum shrink-0",
-              l.strong ? "text-base font-semibold" : "text-sm font-medium",
-              l.tone === "positive" && "text-positive",
-              l.tone === "negative" && "text-negative",
-              l.tone === "muted" && "text-muted-foreground",
-            )}
-          />
+          {l.op || "›"}
+        </span>
+        <div>
+          <p className="text-sm font-medium">{l.label}</p>
+          {l.hint ? <p className="text-xs text-muted-foreground">{l.hint}</p> : null}
         </div>
-      ))}
+      </div>
+      <Money
+        value={Math.abs(l.value)}
+        cents
+        className={cn(
+          "shrink-0 text-sm font-semibold tnum",
+          l.tone === "positive" && "text-positive",
+          l.tone === "negative" && "text-negative",
+          l.tone === "muted" && "text-muted-foreground",
+        )}
+      />
+    </div>
+  );
+
+  return (
+    <div>
+      <div className="divide-y divide-border/60">{flow.map(row)}</div>
+      <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-primary/[0.06] px-3.5 py-3 ring-1 ring-primary/15">
+        <div className="flex items-baseline gap-2.5">
+          <span className="flex size-5 items-center justify-center rounded-md bg-brand text-xs font-bold text-white">=</span>
+          <div>
+            <p className="text-sm font-semibold">{total.label}</p>
+            {total.hint ? <p className="text-xs text-muted-foreground">{total.hint}</p> : null}
+          </div>
+        </div>
+        <Money value={total.value} cents className="shrink-0 text-lg font-bold tnum text-gradient" />
+      </div>
     </div>
   );
 }
