@@ -8,10 +8,17 @@
 //   XLSX_PATH=/path/to.xlsx    SEED_EMAIL=... npx tsx scripts/seed-from-xlsx.ts
 
 import { readFileSync } from "node:fs";
+import WebSocket from "ws";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "../src/lib/database.types";
 import { parseWorkbook } from "../src/lib/import-parse";
 import { importParsedWorkbook } from "../src/lib/import-apply";
+
+// supabase-js constructs a realtime client that needs a global WebSocket.
+// Node < 22 has none, so polyfill it (we never actually use realtime here).
+if (!globalThis.WebSocket) {
+  globalThis.WebSocket = WebSocket as unknown as typeof globalThis.WebSocket;
+}
 
 // --- minimal .env.local loader (no dotenv dependency) ---
 try {
