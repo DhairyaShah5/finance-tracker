@@ -1,20 +1,12 @@
 import { requireUser } from "@/lib/queries";
 import { budgetGroupsByMonth, incomeByMonth } from "@/lib/calc";
-import { fmtMoney, fmtPct } from "@/lib/format";
+import { fmtMoney, fmtPct, monthKey } from "@/lib/format";
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
 import { Money } from "@/components/money";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { BarSeriesChart } from "@/components/charts";
+import { MonthlyBreakdown, type DetailItem, type Group } from "./monthly-breakdown";
 
 export const dynamic = "force-dynamic";
 
@@ -30,9 +22,25 @@ export default async function InsightsPage() {
   ]);
   const txns = txnsRes.data ?? [];
   const categories = categoriesRes.data ?? [];
+  const catById = new Map(categories.map((c) => [c.id, c]));
 
   const months = budgetGroupsByMonth(txns, categories);
-  const income = incomeByMonth(txns);
+  const income = Object.fromEntries(incomeByMonth(txns));
+
+  // Per-expense detail for the click-through modal.
+  const details: DetailItem[] = txns
+    .filter((t) => t.direction === "outflow" && !t.is_transfer)
+    .map((t) => {
+      const cat = t.category_id ? catById.get(t.category_id) : undefined;
+      return {
+        month: monthKey(t.txn_date),
+        date: t.txn_date,
+        description: t.description,
+        category: cat?.name ?? null,
+        group: (cat?.budget_group ?? "unclassified") as Group,
+        amount: t.amount,
+      };
+    });
 
   const totals = months.reduce(
     (a, m) => ({
@@ -46,8 +54,8 @@ export default async function InsightsPage() {
   );
   const classified = totals.needs + totals.wants + totals.savings;
   const pct = (n: number) => (classified > 0 ? n / classified : 0);
-  const totalIncome = [...income.values()].reduce((s, v) => s + v, 0);
-  const avgSpend = months.length ? totals.total / months.length : 0;
+  const totalIncome = Object.values(income).reduce((s, v) => s + v, 0);
+  const avgSpend = months.length ? (totals.needs + totals.wants + totals.unclassified) / months.length : 0;
 
   const chartData = months.map((m) => ({
     label: m.label.split(" ")[0],
@@ -73,7 +81,7 @@ export default async function InsightsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Insights"
-        description="Your spending through the 50/30/20 lens — needs, wants, and savings."
+        description="Your spending through the 50/30/20 lens — click a month to verify every expense."
       />
 
       {empty ? (
@@ -84,7 +92,6 @@ export default async function InsightsPage() {
         </Card>
       ) : (
         <>
-          {/* 50/30/20 summary */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <StatCard
               label="Needs · target 50%"
@@ -106,12 +113,9 @@ export default async function InsightsPage() {
           <p className="text-xs text-muted-foreground">
             Percentages are of classified spending. Reassign any category to needs / wants / savings
             on the Settings page.
-            {totals.unclassified > 0
-              ? ` ${fmtMoney(totals.unclassified)} is unclassified.`
-              : ""}
+            {totals.unclassified > 0 ? ` ${fmtMoney(totals.unclassified)} is still unclassified.` : ""}
           </p>
 
-          {/* Monthly stacked bars */}
           <Card>
             <CardHeader>
               <CardTitle>Monthly needs / wants / savings</CardTitle>
@@ -130,53 +134,14 @@ export default async function InsightsPage() {
             </CardContent>
           </Card>
 
-          {/* Other insights */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <StatCard label="Avg monthly spend" value={<Money value={avgSpend} />} hint={`Over ${months.length} months`} />
-            <StatCard label="Total income" value={<Money value={totalIncome} />} hint="Paychecks" accent="positive" />
-            <StatCard label="Total saved" value={<Money value={totals.savings} />} hint="Into investments" accent="positive" />
-            <StatCard label="Total spent" value={<Money value={totals.total} />} hint="All categories" />
+            <StatCard label="Avg monthly spend" value={<Money value={avgSpend} />} hint={`Over ${months.length} months · excl. savings`} />
+            <StatCard label="Total income" value={<Money value={totalIncome} />} hint="Paychecks + Frictionless" accent="positive" />
+            <StatCard label="Total saved" value={<Money value={totals.savings} />} hint="Investments + vault" accent="positive" />
+            <StatCard label="Total spent" value={<Money value={totals.needs + totals.wants + totals.unclassified} />} hint="Excl. savings" />
           </div>
 
-          {/* Monthly table */}
-          <Card className="overflow-hidden py-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Month</TableHead>
-                  <TableHead className="text-right">Needs</TableHead>
-                  <TableHead className="text-right">Wants</TableHead>
-                  <TableHead className="text-right">Savings</TableHead>
-                  <TableHead className="text-right">Spent</TableHead>
-                  <TableHead className="hidden text-right sm:table-cell">Income</TableHead>
-                  <TableHead className="text-right">Split (N/W/S)</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {months.map((m) => {
-                  const cls = m.needs + m.wants + m.savings;
-                  const p = (n: number) => (cls > 0 ? Math.round((n / cls) * 100) : 0);
-                  return (
-                    <TableRow key={m.month}>
-                      <TableCell className="font-medium">{m.label}</TableCell>
-                      <TableCell className="text-right"><Money value={m.needs} /></TableCell>
-                      <TableCell className="text-right"><Money value={m.wants} /></TableCell>
-                      <TableCell className="text-right"><Money value={m.savings} /></TableCell>
-                      <TableCell className="text-right font-medium"><Money value={m.total} /></TableCell>
-                      <TableCell className="hidden text-right text-muted-foreground sm:table-cell">
-                        <Money value={income.get(m.month) ?? 0} />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Badge variant="outline" className="tnum text-[10px]">
-                          {p(m.needs)}/{p(m.wants)}/{p(m.savings)}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </Card>
+          <MonthlyBreakdown months={months} income={income} details={details} />
         </>
       )}
     </div>
