@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { Landmark, TrendingDown, TrendingUp, Users, Wallet } from "lucide-react";
+import { Flag, Landmark, TrendingDown, TrendingUp, Users, Wallet } from "lucide-react";
 import { requireUser } from "@/lib/queries";
 import {
   buildMonthlySummaries,
   monthlyBudget,
   categoryTotals,
   accountActivity,
+  realBalanceTrend,
   sumOwed,
   signed,
 } from "@/lib/calc";
@@ -58,8 +59,13 @@ export default async function DashboardPage() {
   const thisMonthKey = new Date().toISOString().slice(0, 7);
   const thisMonth = summaries.find((m) => m.month === thisMonthKey) ?? summaries[summaries.length - 1];
 
-  // Chart series
-  const balanceSeries = summaries.map((m) => ({ label: m.label.split(" ")[0], balance: m.closingBalance }));
+  // Chart series — real balance trajectory, starting from your arrival capital
+  // and ending at current net worth.
+  const balanceTrend = realBalanceTrend(txns, netWorth);
+  const balanceSeries = [
+    { label: "Start", balance: settings.starting_funds },
+    ...balanceTrend.map((p) => ({ label: p.label.split(" ")[0], balance: p.balance })),
+  ];
   const budgetSeries = summaries.map((m) => ({
     label: m.label.split(" ")[0],
     Spent: m.totalExpenses,
@@ -111,11 +117,17 @@ export default async function DashboardPage() {
       ) : (
         <>
           {/* KPI grid */}
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+            <StatCard
+              label="Starting balance"
+              value={<Money value={settings.starting_funds} cents />}
+              hint="Arrived with"
+              icon={<Flag className="size-4" />}
+            />
             <StatCard
               label="Available funds"
               value={<Money value={netWorth} cents />}
-              hint="Across all accounts"
+              hint={`${fmtMoney(netWorth - settings.starting_funds, { sign: true })} since arrival`}
               icon={<Wallet className="size-4" />}
             />
             <StatCard

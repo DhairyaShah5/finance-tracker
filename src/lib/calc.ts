@@ -81,6 +81,34 @@ export function buildMonthlySummaries(
   return out;
 }
 
+export interface BalancePoint {
+  month: string; // 'YYYY-MM'
+  label: string;
+  balance: number;
+}
+
+/**
+ * Actual account-balance trajectory over time. Uses ALL flows (transfers
+ * included, since they move real money) and is anchored so the final point
+ * equals current net worth — the implied pre-ledger balance back-fills the rest.
+ */
+export function realBalanceTrend(txns: TransactionRow[], netWorth: number): BalancePoint[] {
+  const byMonth = new Map<string, number>();
+  let signedAll = 0;
+  for (const t of txns) {
+    const s = signed(t);
+    signedAll += s;
+    byMonth.set(monthKey(t.txn_date), round2((byMonth.get(monthKey(t.txn_date)) ?? 0) + s));
+  }
+  let running = round2(netWorth - signedAll); // balance implied before the first txn
+  const out: BalancePoint[] = [];
+  for (const m of [...byMonth.keys()].sort()) {
+    running = round2(running + (byMonth.get(m) ?? 0));
+    out.push({ month: m, label: monthLabel(m), balance: running });
+  }
+  return out;
+}
+
 /** Running available funds = starting_funds + Σ signed (Excel closing balance). */
 export function runningBalance(
   txns: TransactionRow[],
