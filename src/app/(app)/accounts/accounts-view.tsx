@@ -4,6 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
+  ArrowRightLeft,
   CreditCard,
   Landmark,
   MoreHorizontal,
@@ -28,12 +29,47 @@ import { DonutChart } from "@/components/charts";
 import { hueColor } from "@/lib/format";
 import type { AccountActivity } from "@/lib/calc";
 import { AccountDialog } from "./account-dialog";
+import { TransferDialog, type TransferPreset } from "./transfer-dialog";
 import { deleteAccount } from "./actions";
+
+const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 export function AccountsView({ activity }: { activity: AccountActivity[] }) {
   const router = useRouter();
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<AccountActivity | null>(null);
+  const [transferOpen, setTransferOpen] = React.useState(false);
+  const [transferPreset, setTransferPreset] = React.useState<TransferPreset | null>(null);
+
+  function onTransfer() {
+    setTransferPreset(null);
+    setTransferOpen(true);
+  }
+  function onPayoff(a: AccountActivity) {
+    if (a.balance === 0) {
+      toast.info(`${a.account.name} is already at $0.`);
+      return;
+    }
+    // Settle the card to 0. Debt (negative balance) → pay FROM a cash account
+    // INTO the card. Credit (positive balance) → move FROM the card to cash.
+    const cash = activity.find((x) => !x.account.is_credit && x.account.include_in_net_worth);
+    if (a.balance < 0) {
+      setTransferPreset({
+        fromAccountId: cash?.account.id,
+        toAccountId: a.account.id,
+        amount: round2(-a.balance),
+        note: `${a.account.name} payment`,
+      });
+    } else {
+      setTransferPreset({
+        fromAccountId: a.account.id,
+        toAccountId: cash?.account.id,
+        amount: round2(a.balance),
+        note: `${a.account.name} credit refund`,
+      });
+    }
+    setTransferOpen(true);
+  }
 
   const included = activity.filter((a) => a.account.include_in_net_worth);
   const netWorth = included.reduce((s, a) => s + a.balance, 0);
@@ -69,9 +105,14 @@ export function AccountsView({ activity }: { activity: AccountActivity[] }) {
         title="Accounts"
         description="Live balances across every bank, card, and cash stash."
         actions={
-          <Button onClick={onAdd} className="gap-1.5">
-            <Plus className="size-4" /> Add account
-          </Button>
+          <>
+            <Button variant="outline" onClick={onTransfer} className="gap-1.5">
+              <ArrowRightLeft className="size-4" /> Transfer
+            </Button>
+            <Button onClick={onAdd} className="gap-1.5">
+              <Plus className="size-4" /> Add account
+            </Button>
+          </>
         }
       />
 
@@ -142,6 +183,11 @@ export function AccountsView({ activity }: { activity: AccountActivity[] }) {
                             <DropdownMenuItem onClick={() => onEdit(a)}>
                               <Pencil className="size-4" /> Edit balance
                             </DropdownMenuItem>
+                            {credit ? (
+                              <DropdownMenuItem onClick={() => onPayoff(a)}>
+                                <ArrowRightLeft className="size-4" /> Pay off
+                              </DropdownMenuItem>
+                            ) : null}
                             <DropdownMenuItem variant="destructive" onClick={() => onDelete(a)}>
                               <Trash2 className="size-4" /> Delete
                             </DropdownMenuItem>
@@ -187,6 +233,12 @@ export function AccountsView({ activity }: { activity: AccountActivity[] }) {
       </div>
 
       <AccountDialog open={dialogOpen} onOpenChange={setDialogOpen} existing={editing} />
+      <TransferDialog
+        open={transferOpen}
+        onOpenChange={setTransferOpen}
+        accounts={activity}
+        preset={transferPreset}
+      />
     </div>
   );
 }

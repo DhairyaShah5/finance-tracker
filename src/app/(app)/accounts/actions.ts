@@ -113,6 +113,65 @@ export async function updateAccount(id: string, input: AccountInput): Promise<Ac
   return { ok: true };
 }
 
+const transferSchema = z.object({
+  from_account_id: z.string().uuid("Pick the account money leaves."),
+  to_account_id: z.string().uuid("Pick the account money goes to."),
+  amount: z.coerce.number().positive("Amount must be greater than 0."),
+  date: z.string().min(10),
+  note: z.string().trim().nullable().optional(),
+});
+export type TransferInput = z.input<typeof transferSchema>;
+
+/**
+ * Log a transfer between two accounts: an outflow on `from` and an inflow on
+ * `to`, both flagged is_transfer so they update balances but never count as
+ * income or spending. Paying a credit card => from = checking, to = card: the
+ * card's negative (owed) balance rises toward 0 while checking drops. A card
+ * with a positive (credit) balance is settled the other way (from = card).
+ */
+export async function logTransfer(input: TransferInput): Promise<ActionResult> {
+  const parsed = transferSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
+  const d = parsed.data;
+  if (d.from_account_id === d.to_account_id) {
+    return { ok: false, error: "Choose two different accounts." };
+  }
+  const { supabase, user } = await authed();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const { data: accts } = await supabase
+    .from("accounts")
+    .select("id, name")
+    .eq("user_id", user.id)
+    .in("id", [d.from_account_id, d.to_account_id]);
+  const nameOf = (id: string) => accts?.find((a) => a.id === id)?.name ?? "account";
+  const note = d.note?.trim() || null;
+
+  const { error } = await supabase.from("transactions").insert([
+    {
+      user_id: user.id,
+      txn_date: d.date,
+      account_id: d.from_account_id,
+      description: note ?? `Transfer to ${nameOf(d.to_account_id)}`,
+      direction: "outflow",
+      amount: round2(d.amount),
+      is_transfer: true,
+    },
+    {
+      user_id: user.id,
+      txn_date: d.date,
+      account_id: d.to_account_id,
+      description: note ?? `Transfer from ${nameOf(d.from_account_id)}`,
+      direction: "inflow",
+      amount: round2(d.amount),
+      is_transfer: true,
+    },
+  ]);
+  if (error) return { ok: false, error: error.message };
+  for (const p of ["/accounts", "/", "/transactions", "/insights"]) revalidatePath(p);
+  return { ok: true };
+}
+
 export async function deleteAccount(id: string): Promise<ActionResult> {
   const { supabase, user } = await authed();
   if (!user) return { ok: false, error: "Not signed in." };
