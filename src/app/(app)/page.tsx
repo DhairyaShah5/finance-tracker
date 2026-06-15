@@ -121,7 +121,7 @@ export default async function DashboardPage() {
         <>
           {/* KPI grid */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
-            <Reveal delay={0}>
+            <Reveal delay={0} className="h-full">
               <StatCard
                 label="Starting balance"
                 value={<CountUp value={settings.starting_funds} cents />}
@@ -129,7 +129,7 @@ export default async function DashboardPage() {
                 icon={<Flag />}
               />
             </Reveal>
-            <Reveal delay={60}>
+            <Reveal delay={60} className="h-full">
               <StatCard
                 label="Available funds"
                 value={<CountUp value={netWorth} cents />}
@@ -137,7 +137,7 @@ export default async function DashboardPage() {
                 icon={<Wallet />}
               />
             </Reveal>
-            <Reveal delay={120}>
+            <Reveal delay={120} className="h-full">
               <StatCard
                 label="Saved"
                 value={<CountUp value={recon.savings} cents />}
@@ -147,7 +147,7 @@ export default async function DashboardPage() {
                 iconClassName="bg-positive"
               />
             </Reveal>
-            <Reveal delay={180}>
+            <Reveal delay={180} className="h-full">
               <StatCard
                 label="Total income"
                 value={<CountUp value={recon.income - recon.arrivalCapital} cents />}
@@ -157,15 +157,16 @@ export default async function DashboardPage() {
                 iconClassName="bg-positive"
               />
             </Reveal>
-            <Reveal delay={240}>
+            <Reveal delay={240} className="h-full">
               <StatCard
                 label="Total spent"
                 value={<CountUp value={recon.spending} cents />}
+                hint="Incl. net settled"
                 icon={<TrendingDown />}
                 iconClassName="bg-negative"
               />
             </Reveal>
-            <Reveal delay={300}>
+            <Reveal delay={300} className="h-full">
               <StatCard
                 label="Owed to me"
                 value={<CountUp value={owed} cents />}
