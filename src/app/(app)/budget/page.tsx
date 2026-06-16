@@ -9,12 +9,17 @@ export const dynamic = "force-dynamic";
 export default async function BudgetPage() {
   const { supabase, user } = await requireUser();
 
-  const [txnsRes, catsRes] = await Promise.all([
+  const [txnsRes, catsRes, settingsRes] = await Promise.all([
     supabase.from("transactions").select("*").eq("user_id", user.id),
     supabase.from("categories").select("*").eq("user_id", user.id).order("display_order"),
+    supabase.from("settings").select("starting_funds, budget_months, savings_target").eq("user_id", user.id).single(),
   ]);
   const txns = txnsRes.data ?? [];
   const categories = catsRes.data ?? [];
+  const settings = settingsRes.data ?? { starting_funds: 0, budget_months: 12, savings_target: 0 };
+
+  const savingsTarget = settings.savings_target ?? 0;
+  const runwayFloor = settings.budget_months > 0 ? settings.starting_funds / settings.budget_months : 0;
 
   const now = new Date();
   const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -24,16 +29,23 @@ export default async function BudgetPage() {
   // Every month that has activity, plus the current month, oldest first.
   const months = [...new Set([...txns.map((t) => monthKey(t.txn_date)), currentMonth])].sort();
   const statuses = months.map((m) =>
-    monthlyBudgetStatus(txns, categories, m, m === currentMonth ? now.getDate() : undefined),
+    monthlyBudgetStatus(
+      txns,
+      categories,
+      m,
+      m === currentMonth ? now.getDate() : undefined,
+      savingsTarget,
+      runwayFloor,
+    ),
   );
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Budget"
-        description="Adaptive monthly budgets that learn from your spending. Browse any month."
+        description="What you can afford each month — recent income minus your savings target. Browse any month."
       />
-      <BudgetView statuses={statuses} currentMonth={currentMonth} daysLeft={daysLeft} />
+      <BudgetView statuses={statuses} currentMonth={currentMonth} daysLeft={daysLeft} savingsTarget={savingsTarget} />
     </div>
   );
 }

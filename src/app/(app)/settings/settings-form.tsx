@@ -19,6 +19,7 @@ export function SettingsForm({ settings }: { settings: SettingsRow }) {
   const [currency, setCurrency] = React.useState(settings.currency);
   const [startingFunds, setStartingFunds] = React.useState(String(settings.starting_funds));
   const [budgetMonths, setBudgetMonths] = React.useState(String(settings.budget_months));
+  const [savingsTarget, setSavingsTarget] = React.useState(String(settings.savings_target));
 
   const funds = Number(startingFunds);
   const months = Number(budgetMonths);
@@ -30,6 +31,7 @@ export function SettingsForm({ settings }: { settings: SettingsRow }) {
       currency: currency.trim(),
       starting_funds: startingFunds,
       budget_months: budgetMonths,
+      savings_target: savingsTarget,
     };
     start(async () => {
       const res = await updateSettings(input);
@@ -71,7 +73,7 @@ export function SettingsForm({ settings }: { settings: SettingsRow }) {
           </div>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="space-y-1.5">
             <Label htmlFor="currency">Currency</Label>
             <Input
@@ -105,6 +107,19 @@ export function SettingsForm({ settings }: { settings: SettingsRow }) {
               value={budgetMonths}
               onChange={(e) => setBudgetMonths(e.target.value)}
               placeholder="12"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="savings_target">Monthly savings target</Label>
+            <Input
+              id="savings_target"
+              type="number"
+              step="0.01"
+              min="0"
+              inputMode="decimal"
+              value={savingsTarget}
+              onChange={(e) => setSavingsTarget(e.target.value)}
+              placeholder="0.00"
             />
           </div>
         </div>

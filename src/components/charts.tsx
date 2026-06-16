@@ -118,9 +118,22 @@ export function TrendChart({
               connectNulls={false}
               dot={
                 dots
-                  ? s.dashed
-                    ? { r: 5, fill: "var(--card)", stroke: c, strokeWidth: 2, strokeDasharray: "0" }
-                    : { r: 4, fill: c, stroke: "var(--card)", strokeWidth: 2, strokeDasharray: "0" }
+                  ? (p: { cx?: number; cy?: number; index?: number }) =>
+                      p.cx == null || p.cy == null ? (
+                        <g key={p.index} />
+                      ) : (
+                        // Opaque card-colored center so the line never shows through
+                        // the hollow ring; both markers share one radius.
+                        <circle
+                          key={p.index}
+                          cx={p.cx}
+                          cy={p.cy}
+                          r={5}
+                          fill={s.dashed ? "var(--card)" : c}
+                          stroke={s.dashed ? c : "var(--card)"}
+                          strokeWidth={2}
+                        />
+                      )
                   : false
               }
               activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--background)" }}

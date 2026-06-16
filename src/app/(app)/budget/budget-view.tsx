@@ -57,10 +57,12 @@ export function BudgetView({
   statuses,
   currentMonth,
   daysLeft,
+  savingsTarget,
 }: {
   statuses: BudgetStatus[];
   currentMonth: string;
   daysLeft: number;
+  savingsTarget: number;
 }) {
   const currentIdx = statuses.findIndex((s) => s.month === currentMonth);
   const [idx, setIdx] = React.useState(currentIdx === -1 ? statuses.length - 1 : currentIdx);
@@ -102,6 +104,7 @@ export function BudgetView({
   const monthly = statuses.map((s) => ({
     label: s.label.split(" ")[0],
     Budget: s.totalBudget,
+    Expected: s.expected,
     Spent: s.totalSpent,
   }));
 
@@ -179,11 +182,12 @@ export function BudgetView({
       <Reveal delay={60}>
         <Card className="surface">
           <CardHeader className="flex-row items-center justify-between">
-            <CardTitle>Budget vs spent by month</CardTitle>
+            <CardTitle>Afford vs expected vs spent</CardTitle>
             <ChartLegend
               items={[
                 { label: "Spent", color: "var(--chart-1)" },
-                { label: "Budget", color: "var(--chart-3)", dashed: true },
+                { label: "Afford", color: "var(--chart-3)", dashed: true },
+                { label: "Expected", color: "var(--chart-5)", dashed: true },
               ]}
             />
           </CardHeader>
@@ -191,7 +195,8 @@ export function BudgetView({
             <TrendChart
               data={monthly}
               series={[
-                { key: "Budget", name: "Budget", color: "var(--chart-3)", dashed: true },
+                { key: "Budget", name: "Afford", color: "var(--chart-3)", dashed: true },
+                { key: "Expected", name: "Expected", color: "var(--chart-5)", dashed: true },
                 { key: "Spent", name: "Spent", color: "var(--chart-1)" },
               ]}
               height={260}
@@ -240,13 +245,12 @@ export function BudgetView({
       <div className="flex items-start gap-2 rounded-xl border border-border bg-card/50 px-3.5 py-2.5 text-xs text-muted-foreground backdrop-blur-sm">
         <Sparkles className="mt-0.5 size-3.5 shrink-0 text-primary" />
         <p>
-          Each budget is a recency-weighted average of your last 3 months (one-off costs excluded),
-          recomputed monthly.
-          {summer
-            ? " You're in summer mode — as your internship months land, eating-out and other budgets rise to match, then ease back at school."
-            : ""}{" "}
-          Pin a category in{" "}
-          <Link href="/settings" className="text-primary underline-offset-2 hover:underline">Settings</Link> to lock it.
+          Your budget is what you can afford: recent income {fmtMoney(status.income)} −{" "}
+          {fmtMoney(savingsTarget)} savings = {fmtMoney(status.affordable)}, split across categories by
+          your spending mix. You typically spend about {fmtMoney(status.expected)}.
+          {summer ? " Summer internship income is lifting it; it'll ease when you're back on campus." : ""}{" "}
+          Set your savings target or pin a category in{" "}
+          <Link href="/settings" className="text-primary underline-offset-2 hover:underline">Settings</Link>.
         </p>
       </div>
 

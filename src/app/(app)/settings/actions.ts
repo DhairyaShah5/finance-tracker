@@ -21,6 +21,7 @@ const settingsSchema = z.object({
   currency: z.string().trim().min(1, "Currency is required.").max(8, "Currency is too long."),
   starting_funds: z.coerce.number().min(0, "Starting funds can't be negative."),
   budget_months: z.coerce.number().int("Budget months must be a whole number.").min(1, "Budget months must be at least 1."),
+  savings_target: z.coerce.number().min(0, "Savings target can't be negative."),
 });
 
 export type SettingsInput = z.input<typeof settingsSchema>;
@@ -37,7 +38,7 @@ export async function updateSettings(input: SettingsInput): Promise<ActionResult
     .eq("user_id", user.id);
   if (error) return { ok: false, error: error.message };
 
-  for (const p of ["/settings", "/"]) revalidatePath(p);
+  for (const p of ["/settings", "/", "/budget"]) revalidatePath(p);
   return { ok: true };
 }
 

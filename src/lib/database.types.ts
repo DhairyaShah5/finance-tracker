@@ -22,6 +22,7 @@ export interface Database {
           currency: string;
           starting_funds: number;
           budget_months: number;
+          savings_target: number;
         } & Timestamps & WithUpdated;
         Insert: {
           id?: string;
@@ -29,6 +30,7 @@ export interface Database {
           currency?: string;
           starting_funds?: number;
           budget_months?: number;
+          savings_target?: number;
           created_at?: string;
           updated_at?: string;
         };

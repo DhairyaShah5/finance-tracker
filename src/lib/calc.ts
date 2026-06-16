@@ -300,20 +300,20 @@ export function reconcile(txns: TransactionRow[], netWorth: number): Reconciliat
 }
 
 // ---------------------------------------------------------------------------
-// Budgets - adaptive per-category monthly targets vs. actual spend.
-// Each budget is the effective number: a manual pin if set, otherwise a
-// suggestion learned from your recent spending (a weighted trailing average), so
-// it follows your patterns - e.g. eating-out rises during a summer internship
-// and falls again back at school.
+// Budgets - income-anchored. The monthly budget is what you can AFFORD:
+//   affordable = recent income - savings target  (floored at a runway allowance
+//   for low-income months). That total is split across categories by your recent
+//   spending mix, so it's both realistic (capped by income) and personalised.
+//   "expected" = what you typically spend, kept alongside as a reference.
 // ---------------------------------------------------------------------------
 export interface CategoryBudget {
   id: string;
   name: string;
   hue: number | null;
-  budget: number; // effective: pinned if set, else the learned suggestion
+  budget: number; // effective: pinned if set, else the affordable allocation
   pinned: number | null; // manual override, null = auto
-  suggested: number; // learned from recent months
-  isAuto: boolean; // budget came from the suggestion (no pin)
+  expected: number; // what you typically spend here (learned)
+  isAuto: boolean; // budget came from the allocation (no pin)
   spent: number; // your share spent this month
   remaining: number; // budget - spent (negative = over)
   pct: number; // spent / budget
@@ -323,45 +323,54 @@ export interface BudgetStatus {
   month: string;
   label: string;
   categories: CategoryBudget[];
-  totalBudget: number;
+  totalBudget: number; // sum of effective per-category budgets (~ affordable)
+  affordable: number; // recent income - savings target (runway floor)
+  expected: number; // total you typically spend
+  income: number; // recent income used to anchor the budget
   totalSpent: number; // all non-savings spend this month (incl. uncategorized)
   unbudgetedSpent: number; // uncategorized spend this month
   remaining: number; // totalBudget - totalSpent
   pct: number;
   anyPinned: boolean;
-  pacing: { label: string; Spent: number | null; Budget: number }[]; // cumulative
 }
 
 /**
- * This month's spend vs. an adaptive budget per category. The budget is a manual
- * pin if set, else a suggestion = median of your last 3 months' share of spend
- * (robust to one-off months), rounded to $5. Recomputed every month, so it
- * tracks your patterns automatically.
+ * This month's spend vs. an income-anchored budget. The affordable total is
+ * `recent income - savingsTarget`, floored at `runwayFloor` so low-income months
+ * still get a sensible allowance. It's allocated across categories by your recent
+ * spending mix; a manual pin overrides a category's allocation.
  */
 export function monthlyBudgetStatus(
   txns: TransactionRow[],
   categories: CategoryRow[],
   month: string,
   throughDay?: number,
+  savingsTarget = 0,
+  runwayFloor = 0,
 ): BudgetStatus {
   const spentThis = new Map<string, number>();
   const byCatMonth = new Map<string, Map<string, number>>(); // catId -> month -> share
-  const allMonths = new Set<string>(); // every month with data (excl. target)
-  const perDay = new Map<number, number>(); // day-of-month -> share (this month)
+  const incomeByM = new Map<string, number>(); // month -> counted income (excl. target)
+  const allMonths = new Set<string>(); // every month with spend data (excl. target)
   let totalSpent = 0;
   let unbudgetedSpent = 0;
   for (const t of txns) {
-    if (t.is_transfer || t.direction !== "outflow" || isSavingsTxn(t)) continue;
+    if (t.is_transfer) continue;
+    const m = monthKey(t.txn_date);
+    if (t.direction === "inflow") {
+      if (m !== month && !isArrivalDeposit(t)) {
+        incomeByM.set(m, round2((incomeByM.get(m) ?? 0) + t.amount));
+      }
+      continue;
+    }
+    if (isSavingsTxn(t)) continue;
     const share = myAmount(t);
     if (share === 0) continue;
-    const m = monthKey(t.txn_date);
     const key = t.category_id ?? "__none__";
     if (m === month) {
       totalSpent = round2(totalSpent + share);
       spentThis.set(key, round2((spentThis.get(key) ?? 0) + share));
       if (key === "__none__") unbudgetedSpent = round2(unbudgetedSpent + share);
-      const day = Number(t.txn_date.slice(8, 10));
-      perDay.set(day, round2((perDay.get(day) ?? 0) + share));
     } else {
       allMonths.add(m);
       let mm = byCatMonth.get(key);
@@ -373,10 +382,8 @@ export function monthlyBudgetStatus(
     }
   }
 
-  // Learn from the 3 nearest months that have data (prior preferred). Early
-  // months without prior history fall back to the closest following months, so
-  // Aug/Sep still get a budget. Closer months are weighted more, and we add
-  // headroom (BUFFER) so typical months land under budget.
+  // Window = 3 nearest months with data (prior preferred; forward-fill for early
+  // months). Closer months weigh more.
   const monthIndex = (k: string) => {
     const [y, mo] = k.split("-").map(Number);
     return y * 12 + mo;
@@ -387,41 +394,51 @@ export function monthlyBudgetStatus(
     .sort((a, b) => a.dist - b.dist || Number(b.prior) - Number(a.prior))
     .slice(0, 3);
   const wsum = windowMonths.reduce((s, w) => s + 1 / w.dist, 0) || 1;
-  const BUFFER = 1.3; // headroom so most months come in under budget
 
+  // Expected spend per category = recency-weighted average over the window.
+  // Recurring only (active in >= 2 of the window) so one-offs don't count.
   const learn = (id: string) => {
     const mm = byCatMonth.get(id);
     const vals = windowMonths.map((w) => mm?.get(w.key) ?? 0);
     const active = vals.filter((v) => v > 5).length;
-    // A category earns a budget only if it recurs (active in >= 2 of the window);
-    // one-offs like an annual fee get $0.
-    if (active < 2) return { suggested: 0, trend: "flat" as const };
+    if (active < 2) return { expected: 0, trend: "flat" as const };
     const wavg = windowMonths.reduce((s, w, i) => s + vals[i] / w.dist, 0) / wsum;
-    const suggested = Math.round((wavg * BUFFER) / 5) * 5;
+    const expected = Math.round(wavg / 5) * 5;
     const [recent, prev] = vals;
     const trend: "up" | "down" | "flat" =
       recent > prev * 1.15 && recent > 5 ? "up" : recent < prev * 0.85 && prev > 5 ? "down" : "flat";
-    return { suggested, trend };
+    return { expected, trend };
   };
+
+  // Affordable total = recent income - savings target, floored at the runway.
+  const recentIncome = round2(
+    windowMonths.reduce((s, w) => s + (incomeByM.get(w.key) ?? 0) / w.dist, 0) / wsum,
+  );
+  const affordable = round2(Math.max(recentIncome - savingsTarget, runwayFloor));
+
+  const learned = categories.map((c) => ({ c, ...learn(c.id) }));
+  const expectedTotal = round2(learned.reduce((s, x) => s + x.expected, 0));
 
   let totalBudget = 0;
   let anyPinned = false;
   const cats: CategoryBudget[] = [];
-  for (const c of categories) {
-    const { suggested, trend } = learn(c.id);
+  for (const { c, expected, trend } of learned) {
     const pinned = c.monthly_budget != null ? round2(c.monthly_budget) : null;
     if (pinned != null) anyPinned = true;
-    const budget = pinned != null ? pinned : suggested;
+    // Split the affordable total across categories by their share of expected spend.
+    const allocation =
+      expectedTotal > 0 ? Math.round((affordable * (expected / expectedTotal)) / 5) * 5 : 0;
+    const budget = pinned != null ? pinned : allocation;
     const spent = round2(spentThis.get(c.id) ?? 0);
     totalBudget = round2(totalBudget + budget);
-    if (budget <= 0 && spent <= 0) continue; // nothing meaningful to show
+    if (budget <= 0 && spent <= 0 && expected <= 0) continue; // nothing to show
     cats.push({
       id: c.id,
       name: c.name,
       hue: c.color_hue,
       budget,
       pinned,
-      suggested,
+      expected,
       isAuto: pinned == null,
       spent,
       remaining: round2(budget - spent),
@@ -431,41 +448,20 @@ export function monthlyBudgetStatus(
   }
   cats.sort((a, b) => b.budget - a.budget || b.spent - a.spent);
 
-  // Cumulative pacing: actual spend vs. an even budget allowance, sampled weekly
-  // (plus today for the live month). Mirrors a "max allowed vs spent" tracker.
   const totalB = round2(totalBudget);
-  const dim = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate();
-  const sampleDays = [...new Set([7, 14, 21, 28, dim, ...(throughDay != null ? [throughDay] : [])])]
-    .filter((d) => d >= 1 && d <= dim)
-    .sort((a, b) => a - b);
-  const pacing: { label: string; Spent: number | null; Budget: number }[] = [
-    { label: "Start", Spent: 0, Budget: 0 },
-  ];
-  let cum = 0;
-  let di = 1;
-  for (const d of sampleDays) {
-    while (di <= d) {
-      cum = round2(cum + (perDay.get(di) ?? 0));
-      di++;
-    }
-    pacing.push({
-      label: String(d),
-      Spent: throughDay != null && d > throughDay ? null : round2(cum),
-      Budget: round2((totalB * d) / dim),
-    });
-  }
-
   return {
     month,
     label: monthLabel(month),
     categories: cats,
     totalBudget: totalB,
+    affordable,
+    expected: expectedTotal,
+    income: recentIncome,
     totalSpent: round2(totalSpent),
     unbudgetedSpent: round2(unbudgetedSpent),
     remaining: round2(totalB - totalSpent),
     pct: totalB > 0 ? totalSpent / totalB : 0,
     anyPinned,
-    pacing,
   };
 }
 
