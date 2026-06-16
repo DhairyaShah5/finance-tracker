@@ -32,6 +32,7 @@ const TYPE_LABELS: Record<AccountType, string> = {
   debit_card: "Debit card",
   savings: "Savings",
   cash: "Cash",
+  investment: "Investment",
 };
 
 export function AccountDialog({

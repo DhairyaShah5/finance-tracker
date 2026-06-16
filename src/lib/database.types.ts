@@ -43,7 +43,7 @@ export interface Database {
           user_id: string;
           name: string;
           bank: string;
-          type: "checking" | "credit_card" | "debit_card" | "savings" | "cash";
+          type: "checking" | "credit_card" | "debit_card" | "savings" | "cash" | "investment";
           opening_balance: number;
           is_credit: boolean;
           include_in_net_worth: boolean;
@@ -54,7 +54,7 @@ export interface Database {
           user_id: string;
           name: string;
           bank?: string;
-          type?: "checking" | "credit_card" | "debit_card" | "savings" | "cash";
+          type?: "checking" | "credit_card" | "debit_card" | "savings" | "cash" | "investment";
           opening_balance?: number;
           is_credit?: boolean;
           include_in_net_worth?: boolean;

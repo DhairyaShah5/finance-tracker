@@ -10,6 +10,7 @@ export const ACCOUNT_TYPES = [
   "debit_card",
   "savings",
   "cash",
+  "investment",
 ] as const;
 export type AccountType = (typeof ACCOUNT_TYPES)[number];
 

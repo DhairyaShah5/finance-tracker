@@ -7,6 +7,7 @@ import {
   ArrowRightLeft,
   CreditCard,
   Landmark,
+  LineChart,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -217,13 +218,20 @@ export function AccountsView({ activity }: { activity: AccountActivity[] }) {
             <div className="grid gap-3 sm:grid-cols-2">
               {activity.map((a) => {
                 const credit = a.account.is_credit || a.account.type === "credit_card";
+                const invest = a.account.type === "investment";
                 return (
                   <Card key={a.account.id} className="gap-0 py-0">
                     <CardContent className="flex flex-col gap-3 p-4">
                       <div className="flex items-start justify-between">
                         <div className="flex items-center gap-2.5">
                           <span className="flex size-9 items-center justify-center rounded-md bg-secondary text-muted-foreground">
-                            {credit ? <CreditCard className="size-4" /> : <Landmark className="size-4" />}
+                            {credit ? (
+                              <CreditCard className="size-4" />
+                            ) : invest ? (
+                              <LineChart className="size-4" />
+                            ) : (
+                              <Landmark className="size-4" />
+                            )}
                           </span>
                           <div>
                             <p className="text-sm font-medium leading-tight">{a.account.name}</p>
