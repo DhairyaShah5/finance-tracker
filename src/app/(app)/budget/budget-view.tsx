@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Money } from "@/components/money";
 import { Reveal } from "@/components/reveal";
-import { TrendChart } from "@/components/charts";
+import { BarSeriesChart, TrendChart } from "@/components/charts";
 import { DonutBreakdown } from "@/components/donut-breakdown";
 import { cn } from "@/lib/utils";
 import { hueColor, fmtMoney } from "@/lib/format";
@@ -29,7 +29,7 @@ function barColor(pct: number): string {
 
 function Bar({ pct, className }: { pct: number; className?: string }) {
   return (
-    <div className={cn("w-full overflow-hidden rounded-full bg-muted", className)}>
+    <div className={cn("w-full overflow-hidden rounded-full bg-muted ring-1 ring-border/60", className)}>
       <div
         className="h-full rounded-full transition-all duration-500"
         style={{ width: `${Math.max(2, Math.min(100, pct * 100))}%`, background: barColor(pct) }}
@@ -37,6 +37,21 @@ function Bar({ pct, className }: { pct: number; className?: string }) {
     </div>
   );
 }
+
+const ChartLegend = ({ items }: { items: { label: string; color: string; dashed?: boolean }[] }) => (
+  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+    {items.map((it) => (
+      <span key={it.label} className="flex items-center gap-1.5">
+        {it.dashed ? (
+          <span className="h-0 w-4 border-t-2 border-dashed" style={{ borderColor: it.color }} />
+        ) : (
+          <span className="size-2.5 rounded-full" style={{ background: it.color }} />
+        )}
+        {it.label}
+      </span>
+    ))}
+  </div>
+);
 
 export function BudgetView({
   statuses,
@@ -80,6 +95,18 @@ export function BudgetView({
     .filter((c) => c.spent > 0)
     .map((c) => ({ name: c.name, value: c.spent, color: hueColor(c.hue) }));
 
+  const byCatBars = status.categories
+    .filter((c) => c.budget > 0 || c.spent > 0)
+    .slice(0, 7)
+    .map((c) => ({ label: c.name.split(" ")[0], Budget: c.budget, Spent: c.spent }));
+  let cs = 0;
+  let cb = 0;
+  const cumulative = statuses.map((s) => {
+    cs = Math.round((cs + s.totalSpent) * 100) / 100;
+    cb = Math.round((cb + s.totalBudget) * 100) / 100;
+    return { label: s.label.split(" ")[0], Spent: cs, Budget: cb };
+  });
+
   return (
     <div className="space-y-4">
       {/* Month switcher */}
@@ -108,68 +135,87 @@ export function BudgetView({
         </Button>
       </div>
 
-      {/* Headline */}
+      {/* Headline: big figure on the left, a compact meter on the right */}
       <Reveal key={`h-${status.month}`}>
         <Card className="surface sheen overflow-hidden">
-          <CardContent className="flex flex-col gap-4 p-5 sm:p-6">
-            <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
-              <div className="min-w-0">
-                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  {over ? "Over budget" : isCurrent ? "Left to spend" : "Under budget"} · {status.label}
-                </p>
-                <Money
-                  value={Math.abs(left)}
-                  cents
-                  className={cn("block text-4xl font-bold tnum sm:text-5xl", over ? "text-negative" : "grad-text")}
-                />
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {isCurrent && !over
-                    ? `${daysLeft} day${daysLeft === 1 ? "" : "s"} left · about ${fmtMoney(daily, { cents: true })}/day`
-                    : `${Math.round(pct * 100)}% of budget used`}
-                </p>
-              </div>
-              <div className="shrink-0 space-y-1 text-right text-sm">
-                <div className="text-muted-foreground">
-                  Spent <Money value={status.totalSpent} cents className="ml-1 font-semibold text-foreground" />
-                </div>
-                <div className="text-muted-foreground">
-                  Budget <Money value={status.totalBudget} cents className="ml-1 font-semibold text-foreground" />
-                </div>
-              </div>
-            </div>
-            <div>
-              <Bar pct={pct} className="h-2.5" />
-              <p className="mt-1.5 text-xs text-muted-foreground">
-                {Math.round(pct * 100)}% of budget used
-                {status.unbudgetedSpent > 0.005
-                  ? ` · ${fmtMoney(status.unbudgetedSpent, { cents: true })} uncategorized`
-                  : ""}
+          <CardContent className="flex flex-wrap items-center justify-between gap-x-8 gap-y-5 p-5 sm:p-6">
+            <div className="min-w-0">
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                {over ? "Over budget" : isCurrent ? "Left to spend" : "Under budget"} · {status.label}
               </p>
+              <Money
+                value={Math.abs(left)}
+                cents
+                className={cn("block text-4xl font-bold tnum sm:text-5xl", over ? "text-negative" : "grad-text")}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                {isCurrent && !over
+                  ? `${daysLeft} day${daysLeft === 1 ? "" : "s"} left · about ${fmtMoney(daily, { cents: true })}/day`
+                  : `${Math.round(pct * 100)}% of your budget used`}
+              </p>
+            </div>
+            <div className="w-full max-w-xs">
+              <div className="mb-1.5 flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">{Math.round(pct * 100)}% used</span>
+                <span className={over ? "font-medium text-negative" : "font-medium text-positive"}>
+                  {over
+                    ? `${fmtMoney(-left, { cents: true })} over`
+                    : `${fmtMoney(left, { cents: true })} left`}
+                </span>
+              </div>
+              <Bar pct={pct} className="h-2.5" />
+              <div className="mt-1.5 flex items-center justify-between text-xs text-muted-foreground tnum">
+                <span>Spent {fmtMoney(status.totalSpent, { cents: true })}</span>
+                <span>of {fmtMoney(status.totalBudget, { cents: true })}</span>
+              </div>
             </div>
           </CardContent>
         </Card>
       </Reveal>
 
-      {/* Charts */}
+      {/* Cumulative trajectory across all months */}
       <Reveal delay={60}>
+        <Card className="surface">
+          <CardHeader className="flex-row items-center justify-between">
+            <CardTitle>Cumulative spending vs budget</CardTitle>
+            <ChartLegend
+              items={[
+                { label: "Spent", color: "var(--chart-1)" },
+                { label: "Budget", color: "var(--chart-3)", dashed: true },
+              ]}
+            />
+          </CardHeader>
+          <CardContent>
+            <TrendChart
+              data={cumulative}
+              series={[
+                { key: "Budget", name: "Budget", color: "var(--chart-3)", dashed: true },
+                { key: "Spent", name: "Spent", color: "var(--chart-1)" },
+              ]}
+              height={260}
+            />
+          </CardContent>
+        </Card>
+      </Reveal>
+
+      {/* Per-month bars + this month's breakdown */}
+      <Reveal delay={120}>
         <div className="grid gap-4 lg:grid-cols-5">
           <Card className="surface lg:col-span-3">
             <CardHeader className="flex-row items-center justify-between">
-              <CardTitle>Spending vs budget · {monthShort}</CardTitle>
-              <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1.5">
-                  <span className="h-0.5 w-4 rounded-full" style={{ background: "var(--chart-1)" }} /> Spent
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="h-0 w-4 border-t-2 border-dashed" style={{ borderColor: "var(--chart-3)" }} /> Budget
-                </span>
-              </div>
+              <CardTitle>Budget vs spent by category · {monthShort}</CardTitle>
+              <ChartLegend
+                items={[
+                  { label: "Budget", color: "var(--chart-3)" },
+                  { label: "Spent", color: "var(--chart-1)" },
+                ]}
+              />
             </CardHeader>
             <CardContent>
-              <TrendChart
-                data={status.pacing}
+              <BarSeriesChart
+                data={byCatBars}
                 series={[
-                  { key: "Budget", name: "Budget", color: "var(--chart-3)", dashed: true },
+                  { key: "Budget", name: "Budget", color: "var(--chart-3)" },
                   { key: "Spent", name: "Spent", color: "var(--chart-1)" },
                 ]}
                 height={260}
@@ -202,10 +248,10 @@ export function BudgetView({
       </div>
 
       {/* Per-category */}
-      <Reveal delay={120}>
+      <Reveal delay={160}>
         <Card className="surface">
           <CardHeader className="flex-row items-center justify-between">
-            <CardTitle>By category</CardTitle>
+            <CardTitle>By category · {monthShort}</CardTitle>
             <Link
               href="/settings"
               className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
