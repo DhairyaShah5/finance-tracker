@@ -152,7 +152,7 @@ export function IndiaView({ transfers }: { transfers: IndiaTransferRow[] }) {
     <div className="space-y-6">
       <PageHeader
         title="India Transfers"
-        description="Money moved between USD and INR — and the rate you got."
+        description="Money moved between USD and INR, and the rate you got."
         actions={
           <Button onClick={onAdd} className="gap-1.5">
             <Plus className="size-4" /> Add transfer
@@ -204,7 +204,7 @@ export function IndiaView({ transfers }: { transfers: IndiaTransferRow[] }) {
               value={
                 summary.avgReceivedRate != null
                   ? `${fmtNumber(summary.avgReceivedRate, 2)} ₹/$`
-                  : "—"
+                  : "-"
               }
               hint={
                 summary.avgSentRate != null
@@ -286,7 +286,7 @@ export function IndiaView({ transfers }: { transfers: IndiaTransferRow[] }) {
                         </TableCell>
                         <TableCell className="font-medium">{t.description}</TableCell>
                         <TableCell className="hidden text-sm text-muted-foreground md:table-cell">
-                          {t.endpoint ?? "—"}
+                          {t.endpoint ?? "-"}
                         </TableCell>
                         <TableCell className="text-right">
                           <Money value={t.usd_amount} cents className="font-medium" />
@@ -295,10 +295,10 @@ export function IndiaView({ transfers }: { transfers: IndiaTransferRow[] }) {
                           {fmtInr(t.inr_amount)}
                         </TableCell>
                         <TableCell className="text-right tnum">
-                          {rate != null ? fmtNumber(rate, 2) : "—"}
+                          {rate != null ? fmtNumber(rate, 2) : "-"}
                         </TableCell>
                         <TableCell className="hidden max-w-40 truncate text-sm text-muted-foreground lg:table-cell">
-                          {t.notes ?? "—"}
+                          {t.notes ?? "-"}
                         </TableCell>
                         <TableCell>
                           <DropdownMenu>

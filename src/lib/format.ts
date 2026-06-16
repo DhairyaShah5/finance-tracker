@@ -43,7 +43,7 @@ type DateStyle = "short" | "medium" | "long" | "weekday" | "monthYear";
 
 /** Format an ISO date string (yyyy-MM-dd) without timezone drift. */
 export function fmtDate(iso: string | null | undefined, style: DateStyle = "medium"): string {
-  if (!iso) return "—";
+  if (!iso) return "-";
   const d = iso.length === 10 ? parseISO(iso) : new Date(iso);
   switch (style) {
     case "short":
@@ -59,7 +59,7 @@ export function fmtDate(iso: string | null | undefined, style: DateStyle = "medi
   }
 }
 
-/** 'YYYY-MM' bucket key from an ISO date (no TZ math — slices the string). */
+/** 'YYYY-MM' bucket key from an ISO date (no TZ math - slices the string). */
 export function monthKey(iso: string): string {
   return iso.slice(0, 7);
 }

@@ -143,9 +143,9 @@ export function MonthlyBreakdown({
       <Dialog open={!!openMonth} onOpenChange={(v) => !v && setOpenMonth(null)}>
         <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>{selected?.label} — expense breakdown</DialogTitle>
+            <DialogTitle>{selected?.label} expense breakdown</DialogTitle>
             <DialogDescription>
-              Set each expense as Needs, Wants, or Savings — you decide per transaction.
+              Set each expense as Needs, Wants, or Savings. You decide per transaction.
             </DialogDescription>
           </DialogHeader>
 

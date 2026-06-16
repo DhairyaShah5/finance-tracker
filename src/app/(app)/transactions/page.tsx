@@ -24,7 +24,7 @@ export default async function TransactionsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Transactions" description="Every dollar in and out — your full ledger." />
+      <PageHeader title="Transactions" description="Every dollar in and out, your full ledger." />
       <TransactionsView
         transactions={txns}
         netWorth={netWorth}

@@ -114,7 +114,7 @@ function CategoriesSection({ categories }: { categories: CategoryRow[] }) {
         <div className="divide-y divide-border rounded-lg border border-border">
           {categories.length === 0 ? (
             <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-              No categories yet — add your first below.
+              No categories yet. Add your first below.
             </p>
           ) : (
             categories.map((c) =>
@@ -273,7 +273,7 @@ function InflowTypesSection({ inflowTypes }: { inflowTypes: InflowTypeRow[] }) {
         <div className="divide-y divide-border rounded-lg border border-border">
           {inflowTypes.length === 0 ? (
             <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-              No income types yet — add your first below.
+              No income types yet. Add your first below.
             </p>
           ) : (
             inflowTypes.map((i) =>

@@ -17,7 +17,7 @@ const schema = z.object({
 export type TransferInput = z.input<typeof schema>;
 type ActionResult = { ok: boolean; error?: string };
 
-// effective_fx_rate is a generated DB column — never write it.
+// effective_fx_rate is a generated DB column - never write it.
 function normalize(data: z.output<typeof schema>) {
   return {
     transfer_date: data.transfer_date,

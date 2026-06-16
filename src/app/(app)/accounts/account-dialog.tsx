@@ -98,7 +98,7 @@ export function AccountDialog({
           <DialogTitle>{existing ? "Edit account" : "Add account"}</DialogTitle>
           <DialogDescription>
             {existing
-              ? "Set the exact current balance — activity is layered on top going forward."
+              ? "Set the exact current balance. Activity is layered on top going forward."
               : "Track a bank, card, or cash balance."}
           </DialogDescription>
         </DialogHeader>

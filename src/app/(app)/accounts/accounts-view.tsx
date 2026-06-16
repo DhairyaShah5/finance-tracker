@@ -116,7 +116,7 @@ export function AccountsView({ activity }: { activity: AccountActivity[] }) {
     setBreakdown({
       title: "Assets",
       explain:
-        "Every account with a positive balance — cash, checking & savings. Includes excluded accounts like Marcus HYSA.",
+        "Every account with a positive balance: cash, checking & savings. Includes excluded accounts like Marcus HYSA.",
       rows: activity.filter((a) => a.balance > 0).map(rowOf).sort((a, b) => b.value - a.value),
       total: assets,
       colored: false,
@@ -309,7 +309,7 @@ export function AccountsView({ activity }: { activity: AccountActivity[] }) {
             <div>
               {breakdown.rows.length === 0 ? (
                 <p className="py-6 text-center text-sm text-muted-foreground">
-                  Nothing here — every balance is zero{breakdown.title === "What you owe" ? " or positive" : ""}.
+                  Nothing here. Every balance is zero{breakdown.title === "What you owe" ? " or positive" : ""}.
                 </p>
               ) : (
                 <div className="divide-y divide-border/60">

@@ -13,7 +13,7 @@ export interface UserContext {
 /**
  * Get the authed user + a request-bound Supabase client, or redirect to /login.
  * Also ensures the user's settings row and default lookups exist BEFORE the
- * caller fetches data — pages await this first, which (unlike the layout, that
+ * caller fetches data - pages await this first, which (unlike the layout, that
  * renders in parallel with the page) guarantees setup is complete.
  */
 export async function requireUser(): Promise<UserContext> {

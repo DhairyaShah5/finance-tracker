@@ -176,7 +176,7 @@ export interface DonutSlice {
 }
 
 /** Donut breakdown (category / account composition). Hover a slice for its
- *  name, amount and share — so the wheel itself can be large. */
+ *  name, amount and share - so the wheel itself can be large. */
 export function DonutChart({ data, height = 300 }: { data: DonutSlice[]; height?: number }) {
   const total = data.reduce((s, d) => s + d.value, 0);
   return (

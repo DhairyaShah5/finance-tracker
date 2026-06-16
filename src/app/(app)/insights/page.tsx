@@ -85,7 +85,7 @@ export default async function InsightsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Insights"
-        description="Your spending through the 50/30/20 lens — click a month to verify every expense."
+        description="Your spending through the 50/30/20 lens. Click a month to verify every expense."
       />
 
       {empty ? (

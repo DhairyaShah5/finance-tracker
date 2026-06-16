@@ -35,7 +35,7 @@ export const DEFAULT_CATEGORIES: { name: string; color_hue: number }[] = [
 ];
 
 // 6 inflow types (workbook H2:H7). "Reimbursement" was misspelled in the
-// source as "Reimbursment" — the import maps the old spelling onto this.
+// source as "Reimbursment" - the import maps the old spelling onto this.
 export const DEFAULT_INFLOW_TYPES: { name: string; is_paycheck: boolean }[] = [
   { name: "Personal Deposit", is_paycheck: false },
   { name: "Reimbursement", is_paycheck: false },

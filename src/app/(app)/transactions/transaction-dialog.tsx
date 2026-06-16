@@ -151,7 +151,7 @@ export function TransactionDialog({
           <DialogTitle>{existing ? "Edit transaction" : "Add transaction"}</DialogTitle>
           <DialogDescription>
             {mode === "transfer"
-              ? "Move money between your own accounts — excluded from income & spending."
+              ? "Move money between your own accounts. Excluded from income & spending."
               : "Record money in or out of an account."}
           </DialogDescription>
         </DialogHeader>
@@ -262,7 +262,7 @@ export function TransactionDialog({
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  You decide per transaction — Savings (investments, vault) is set aside, not spent.
+                  You decide per transaction. Savings (investments, vault) is set aside, not spent.
                 </p>
               </div>
 
@@ -313,7 +313,7 @@ export function TransactionDialog({
                     <p className="text-lg font-semibold tnum">
                       {Number(splitCount) > 0 && Number(amount) > 0
                         ? fmtMoney(Number(amount) / Number(splitCount), { cents: true })
-                        : "—"}
+                        : "-"}
                     </p>
                   </div>
                 </div>

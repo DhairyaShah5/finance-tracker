@@ -167,7 +167,7 @@ export function TransferDialog({
           <div className="rounded-md border border-border bg-secondary/40 px-3 py-2 text-xs text-muted-foreground">
             Effective rate:{" "}
             <span className="font-medium tnum text-foreground">
-              {previewRate !== null ? `${fmtNumber(previewRate, 2)} ₹/$` : "—"}
+              {previewRate !== null ? `${fmtNumber(previewRate, 2)} ₹/$` : "-"}
             </span>
           </div>
 

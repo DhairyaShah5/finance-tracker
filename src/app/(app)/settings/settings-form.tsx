@@ -53,7 +53,7 @@ export function SettingsForm({ settings }: { settings: SettingsRow }) {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Derived monthly budget — shown prominently */}
+        {/* Derived monthly budget - shown prominently */}
         <div className="flex items-center gap-4 rounded-lg border border-border bg-secondary/40 p-4">
           <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
             <Wallet className="size-5" />
@@ -66,7 +66,7 @@ export function SettingsForm({ settings }: { settings: SettingsRow }) {
               {fmtMoney(derivedBudget, { cents: true })}
             </p>
             <p className="text-xs text-muted-foreground">
-              {fmtMoney(funds || 0)} ÷ {Number.isFinite(months) && months > 0 ? months : "—"} months
+              {fmtMoney(funds || 0)} ÷ {Number.isFinite(months) && months > 0 ? months : "-"} months
             </p>
           </div>
         </div>

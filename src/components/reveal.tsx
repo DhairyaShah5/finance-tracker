@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 
 /**
- * Lightweight entrance animation (fade + rise) via tw-animate-css — no JS.
+ * Lightweight entrance animation (fade + rise) via tw-animate-css - no JS.
  * Pass an incrementing `delay` to stagger a grid of cards.
  */
 export function Reveal({

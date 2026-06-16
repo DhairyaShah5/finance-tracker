@@ -102,7 +102,7 @@ export async function deleteTransaction(id: string): Promise<ActionResult> {
   return { ok: true };
 }
 
-/** Reassign a transaction's category — used from the Insights month breakdown. */
+/** Reassign a transaction's category - used from the Insights month breakdown. */
 export async function setTransactionCategory(id: string, categoryId: string | null): Promise<ActionResult> {
   const { supabase, user } = await authed();
   if (!user) return { ok: false, error: "Not signed in." };
@@ -116,7 +116,7 @@ export async function setTransactionCategory(id: string, categoryId: string | nu
   return { ok: true };
 }
 
-/** Set a transaction's 50/30/20 group — used from the Insights month breakdown. */
+/** Set a transaction's 50/30/20 group - used from the Insights month breakdown. */
 export async function setTransactionBudgetGroup(
   id: string,
   group: "needs" | "wants" | "savings" | null,

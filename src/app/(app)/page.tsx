@@ -50,7 +50,7 @@ export default async function DashboardPage() {
     .reduce((s, a) => s + a.balance, 0);
   const owed = sumOwed(debtors);
 
-  // Full reconciliation — every dollar in exactly one bucket:
+  // Full reconciliation - every dollar in exactly one bucket:
   // income (incl. arrival capital) − spending − savings − net-fronted = net worth.
   const recon = reconcile(txns, netWorth);
 
@@ -59,7 +59,7 @@ export default async function DashboardPage() {
     openingBalance: 0, // closing chain unused here; the trend uses realBalanceTrend
   });
 
-  // Chart series — balance trajectory from arrival capital to current net worth.
+  // Chart series - balance trajectory from arrival capital to current net worth.
   // Exclude the arrival deposits themselves (they constitute the starting
   // balance, so counting them as flows would double-count). This matches the
   // source workbook's monthly closing balances exactly.
@@ -176,7 +176,7 @@ export default async function DashboardPage() {
             </Reveal>
           </div>
 
-          {/* The cash identity — how the current balance is reached, to the cent */}
+          {/* The cash identity - how the current balance is reached, to the cent */}
           <Reveal delay={340}>
             <Card className="surface">
               <CardHeader>
@@ -252,7 +252,7 @@ export default async function DashboardPage() {
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">{t.description}</p>
                         <p className="text-xs text-muted-foreground">
-                          {fmtDate(t.txn_date, "short")} · {acct?.name ?? "—"}
+                          {fmtDate(t.txn_date, "short")} · {acct?.name ?? "-"}
                           {cat ? ` · ${cat.name}` : ""}
                         </p>
                       </div>

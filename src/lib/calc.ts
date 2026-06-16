@@ -1,4 +1,4 @@
-// Pure derivation engine — no I/O. Turns raw ledger rows into the metrics the
+// Pure derivation engine - no I/O. Turns raw ledger rows into the metrics the
 // UI renders. Mirrors the formulas in the source Excel workbook (see
 // _research/08-excel-domain-model.md §4) but normalized and consistent.
 
@@ -24,7 +24,7 @@ export function signed(t: Pick<TransactionRow, "direction" | "amount">): number 
 
 /**
  * The arrival capital (wire from home, forex card, opening cash). These inflows
- * ARE the starting balance, so they're not counted as income — counting them
+ * ARE the starting balance, so they're not counted as income - counting them
  * would double the starting funds.
  */
 const ARRIVAL_DEPOSIT = /wire transfer from home|forex card to bofa|initial cash deposit/i;
@@ -56,7 +56,7 @@ export function myAmount(
 }
 
 // ---------------------------------------------------------------------------
-// Monthly summaries — the Dashboard / closing-balance chain (Excel R1–R6)
+// Monthly summaries - the Dashboard / closing-balance chain (Excel R1–R6)
 // ---------------------------------------------------------------------------
 export interface MonthlySummary {
   month: string; // 'YYYY-MM'
@@ -127,7 +127,7 @@ export interface BalancePoint {
 /**
  * Actual account-balance trajectory over time. Uses ALL flows (transfers
  * included, since they move real money) and is anchored so the final point
- * equals current net worth — the implied pre-ledger balance back-fills the rest.
+ * equals current net worth - the implied pre-ledger balance back-fills the rest.
  */
 export function realBalanceTrend(txns: TransactionRow[], netWorth: number): BalancePoint[] {
   const byMonth = new Map<string, number>();
@@ -162,7 +162,7 @@ export function runningBalance(
 }
 
 // ---------------------------------------------------------------------------
-// Category breakdown (Excel R10 — SUMIF outflow by category)
+// Category breakdown (Excel R10 - SUMIF outflow by category)
 // ---------------------------------------------------------------------------
 export interface CategoryTotal {
   id: string | null;
@@ -180,7 +180,7 @@ export function categoryTotals(
   const agg = new Map<string | null, { total: number; count: number }>();
   for (const t of txns) {
     if (t.direction !== "outflow") continue;
-    // Savings (investments, vault) are not spending — keep them out of the breakdown.
+    // Savings (investments, vault) are not spending - keep them out of the breakdown.
     if (isSavingsTxn(t)) continue;
     const share = myAmount(t); // your share only (handles transfers / friend / split)
     if (share === 0) continue;
@@ -205,7 +205,7 @@ export function categoryTotals(
 }
 
 // ---------------------------------------------------------------------------
-// 50 / 30 / 20 budgeting — needs / wants / savings split of spending per month
+// 50 / 30 / 20 budgeting - needs / wants / savings split of spending per month
 // ---------------------------------------------------------------------------
 export interface MonthGroups {
   month: string;
@@ -249,16 +249,16 @@ export function budgetGroupsByMonth(txns: TransactionRow[]): MonthGroups[] {
 }
 
 // ---------------------------------------------------------------------------
-// Reconciliation — proves the cash identity:
+// Reconciliation - proves the cash identity:
 //   starting + income − spending − savings − netToOthers = current balance
 // Every dollar lands in exactly one bucket, so the waterfall closes to the cent.
 // ---------------------------------------------------------------------------
 export interface Reconciliation {
-  income: number; // every inflow that stayed yours — paychecks + the arrival capital
+  income: number; // every inflow that stayed yours - paychecks + the arrival capital
   arrivalCapital: number; // the slice of income you arrived with (shown for context)
   consumption: number; // your share of non-savings outflows (categorized spending)
   settled: number; // tiny net of informal friend/shared washes folded into spending
-  spending: number; // consumption + settled — the figure that closes the identity
+  spending: number; // consumption + settled - the figure that closes the identity
   savings: number; // your share of savings outflows (investments, vault)
   currentBalance: number; // = net worth (the ground-truth account total)
 }
@@ -266,7 +266,7 @@ export interface Reconciliation {
 /**
  * Decompose the ledger so the cash identity closes on three terms:
  *   income − spending − savings = current balance.
- * The arrival capital (the money you flew in with) IS income — your early
+ * The arrival capital (the money you flew in with) IS income - your early
  * expenses came straight out of it. Friend-fronting and shared splits settle
  * informally and never net perfectly, leaving a tiny residual (`settled`); we
  * fold it into spending rather than show a separate line, so the waterfall stays
@@ -293,7 +293,7 @@ export function reconcile(txns: TransactionRow[], netWorth: number): Reconciliat
   consumption = round2(consumption);
   savings = round2(savings);
   const currentBalance = round2(netWorth);
-  // Residual from imperfect informal settlements — folded into spending.
+  // Residual from imperfect informal settlements - folded into spending.
   const settled = round2(income - consumption - savings - currentBalance);
   const spending = round2(consumption + settled);
   return { income, arrivalCapital, consumption, settled, spending, savings, currentBalance };
@@ -382,7 +382,7 @@ export function paycheckCount(txns: TransactionRow[], inflowTypes: InflowTypeRow
 }
 
 // ---------------------------------------------------------------------------
-// Debtors — explicit, user-managed amounts owed to you (not auto-derived).
+// Debtors - explicit, user-managed amounts owed to you (not auto-derived).
 // ---------------------------------------------------------------------------
 /** Total currently owed to you across all debtors. */
 export function sumOwed(debtors: Pick<DebtorRow, "amount">[]): number {
@@ -390,7 +390,7 @@ export function sumOwed(debtors: Pick<DebtorRow, "amount">[]): number {
 }
 
 // ---------------------------------------------------------------------------
-// India transfers (Excel R8 — effective FX = INR / USD)
+// India transfers (Excel R8 - effective FX = INR / USD)
 // ---------------------------------------------------------------------------
 export interface FxSummary {
   totalReceivedUsd: number;

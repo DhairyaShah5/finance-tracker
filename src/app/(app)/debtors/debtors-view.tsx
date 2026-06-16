@@ -58,7 +58,7 @@ export function DebtorsView({ debtors }: { debtors: DebtorRow[] }) {
     <div className="space-y-6">
       <PageHeader
         title="Debtors"
-        description="People who owe you money — track the outstanding amounts."
+        description="People who owe you money. Track the outstanding amounts."
         actions={
           <Button onClick={onAdd} className="gap-1.5">
             <Plus className="size-4" /> Add debtor
@@ -107,7 +107,7 @@ export function DebtorsView({ debtors }: { debtors: DebtorRow[] }) {
                 <TableRow key={d.id}>
                   <TableCell className="font-medium">{d.name}</TableCell>
                   <TableCell className="hidden max-w-[32ch] truncate text-sm text-muted-foreground sm:table-cell">
-                    {d.note?.trim() ? d.note : "—"}
+                    {d.note?.trim() ? d.note : "-"}
                   </TableCell>
                   <TableCell className="text-right">
                     <Money value={d.amount} cents colored={d.amount > 0} className="font-medium" />

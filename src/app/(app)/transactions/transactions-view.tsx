@@ -193,11 +193,11 @@ export function TransactionsView({
               {cat.name}
             </span>
           ) : (
-            <span className="text-sm text-muted-foreground">—</span>
+            <span className="text-sm text-muted-foreground">-</span>
           )}
         </TableCell>
         <TableCell className="hidden text-sm text-muted-foreground sm:table-cell">
-          {acct?.name ?? "—"}
+          {acct?.name ?? "-"}
         </TableCell>
         <TableCell className="text-right">
           {t.is_transfer ? (
@@ -343,7 +343,7 @@ export function TransactionsView({
         </div>
       ) : null}
 
-      {/* The cash identity — proves income/spending/savings reconcile to balance. */}
+      {/* The cash identity - proves income/spending/savings reconcile to balance. */}
       <Card className="p-4">
         <div className="mb-1 flex items-center justify-between">
           <h3 className="text-sm font-semibold">How your balance adds up</h3>
