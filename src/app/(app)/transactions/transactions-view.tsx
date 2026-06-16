@@ -202,7 +202,19 @@ export function TransactionsView({
     const isSplit =
       !t.is_transfer && !!t.split_count && (t.whose_expense === "Group" || t.whose_expense === "Roommates");
     return (
-      <div key={t.id} className="group/row flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-muted/40 sm:px-4">
+      <div
+        key={t.id}
+        role="button"
+        tabIndex={0}
+        onClick={() => onEdit(t)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onEdit(t);
+          }
+        }}
+        className="group/row flex cursor-pointer items-center gap-3 px-3 py-2.5 outline-none transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 sm:px-4"
+      >
         <Avatar t={t} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -255,6 +267,7 @@ export function TransactionsView({
             <Button
               variant="ghost"
               size="icon"
+              onClick={(e) => e.stopPropagation()}
               className="size-7 shrink-0 text-muted-foreground opacity-60 transition-opacity group-hover/row:opacity-100"
             >
               <MoreHorizontal className="size-4" />
