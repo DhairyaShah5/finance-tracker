@@ -21,7 +21,8 @@ import { Reveal } from "@/components/reveal";
 import { ReconciliationFlow } from "@/components/reconciliation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendChart, BarSeriesChart, DonutChart } from "@/components/charts";
+import { TrendChart, BarSeriesChart } from "@/components/charts";
+import { DonutBreakdown } from "@/components/donut-breakdown";
 
 export const dynamic = "force-dynamic";
 
@@ -206,7 +207,7 @@ export default async function DashboardPage() {
                   <CardTitle>Spending by category</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <DonutChart data={donut} />
+                  <DonutBreakdown data={donut} height={230} centerLabel="Spent" emptyText="No spending to chart." />
                 </CardContent>
               </Card>
             </div>

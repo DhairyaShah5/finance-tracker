@@ -329,6 +329,7 @@ export interface BudgetStatus {
   remaining: number; // totalBudget - totalSpent
   pct: number;
   anyPinned: boolean;
+  pacing: { label: string; Spent: number | null; Budget: number }[]; // cumulative
 }
 
 /** The k calendar months immediately before `month`, most-recent first. */
@@ -358,9 +359,11 @@ export function monthlyBudgetStatus(
   txns: TransactionRow[],
   categories: CategoryRow[],
   month: string,
+  throughDay?: number,
 ): BudgetStatus {
   const spentThis = new Map<string, number>();
   const byCatMonth = new Map<string, Map<string, number>>(); // catId -> month -> share
+  const perDay = new Map<number, number>(); // day-of-month -> share (this month)
   let totalSpent = 0;
   let unbudgetedSpent = 0;
   for (const t of txns) {
@@ -373,6 +376,8 @@ export function monthlyBudgetStatus(
       totalSpent = round2(totalSpent + share);
       spentThis.set(key, round2((spentThis.get(key) ?? 0) + share));
       if (key === "__none__") unbudgetedSpent = round2(unbudgetedSpent + share);
+      const day = Number(t.txn_date.slice(8, 10));
+      perDay.set(day, round2((perDay.get(day) ?? 0) + share));
     } else if (m < month) {
       let mm = byCatMonth.get(key);
       if (!mm) {
@@ -384,13 +389,16 @@ export function monthlyBudgetStatus(
   }
 
   const pm = priorMonthKeys(month, 3);
+  const WEIGHTS = [0.5, 0.3, 0.2]; // recent months count most
   const learn = (id: string) => {
     const mm = byCatMonth.get(id);
     const vals = pm.map((m) => mm?.get(m) ?? 0); // [recent, prev, prev2]
-    // Median of the last 3 months - robust to one-off lumpy months, so an annual
-    // fee or a single splurge won't inflate the monthly budget.
-    const median = [...vals].sort((a, b) => a - b)[1];
-    const suggested = Math.round(median / 5) * 5;
+    // A category earns a budget only if it recurs (active in >= 2 of the last 3
+    // months); one-offs like an annual fee or a single splurge get $0. Otherwise
+    // it's a recency-weighted average, so the budget tracks your current level.
+    const active = vals.filter((v) => v > 5).length;
+    const suggested =
+      active >= 2 ? Math.round(vals.reduce((s, v, i) => s + v * WEIGHTS[i], 0) / 5) * 5 : 0;
     const [recent, prev] = vals;
     const trend: "up" | "down" | "flat" =
       recent > prev * 1.15 && recent > 5 ? "up" : recent < prev * 0.85 && prev > 5 ? "down" : "flat";
@@ -424,16 +432,41 @@ export function monthlyBudgetStatus(
   }
   cats.sort((a, b) => b.budget - a.budget || b.spent - a.spent);
 
+  // Cumulative pacing: actual spend vs. an even budget allowance, sampled weekly
+  // (plus today for the live month). Mirrors a "max allowed vs spent" tracker.
+  const totalB = round2(totalBudget);
+  const dim = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate();
+  const sampleDays = [...new Set([7, 14, 21, 28, dim, ...(throughDay != null ? [throughDay] : [])])]
+    .filter((d) => d >= 1 && d <= dim)
+    .sort((a, b) => a - b);
+  const pacing: { label: string; Spent: number | null; Budget: number }[] = [
+    { label: "Start", Spent: 0, Budget: 0 },
+  ];
+  let cum = 0;
+  let di = 1;
+  for (const d of sampleDays) {
+    while (di <= d) {
+      cum = round2(cum + (perDay.get(di) ?? 0));
+      di++;
+    }
+    pacing.push({
+      label: String(d),
+      Spent: throughDay != null && d > throughDay ? null : round2(cum),
+      Budget: round2((totalB * d) / dim),
+    });
+  }
+
   return {
     month,
     label: monthLabel(month),
     categories: cats,
-    totalBudget: round2(totalBudget),
+    totalBudget: totalB,
     totalSpent: round2(totalSpent),
     unbudgetedSpent: round2(unbudgetedSpent),
-    remaining: round2(totalBudget - totalSpent),
-    pct: totalBudget > 0 ? totalSpent / totalBudget : 0,
+    remaining: round2(totalB - totalSpent),
+    pct: totalB > 0 ? totalSpent / totalB : 0,
     anyPinned,
+    pacing,
   };
 }
 

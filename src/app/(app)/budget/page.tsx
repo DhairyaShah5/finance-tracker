@@ -23,7 +23,9 @@ export default async function BudgetPage() {
 
   // Every month that has activity, plus the current month, oldest first.
   const months = [...new Set([...txns.map((t) => monthKey(t.txn_date)), currentMonth])].sort();
-  const statuses = months.map((m) => monthlyBudgetStatus(txns, categories, m));
+  const statuses = months.map((m) =>
+    monthlyBudgetStatus(txns, categories, m, m === currentMonth ? now.getDate() : undefined),
+  );
 
   return (
     <div className="space-y-6">

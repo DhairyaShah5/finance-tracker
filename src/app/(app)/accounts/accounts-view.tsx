@@ -32,7 +32,7 @@ import {
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
 import { Money } from "@/components/money";
-import { DonutChart } from "@/components/charts";
+import { DonutBreakdown } from "@/components/donut-breakdown";
 import { hueColor } from "@/lib/format";
 import type { AccountActivity } from "@/lib/calc";
 import { AccountDialog } from "./account-dialog";
@@ -282,11 +282,7 @@ export function AccountsView({ activity }: { activity: AccountActivity[] }) {
             <CardTitle>Where your money sits</CardTitle>
           </CardHeader>
           <CardContent>
-            {donut.length ? (
-              <DonutChart data={donut} />
-            ) : (
-              <p className="py-10 text-center text-sm text-muted-foreground">No positive balances to chart.</p>
-            )}
+            <DonutBreakdown data={donut} height={220} centerLabel="Assets" emptyText="No positive balances to chart." />
           </CardContent>
         </Card>
       </div>

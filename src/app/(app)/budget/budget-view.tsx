@@ -15,7 +15,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Money } from "@/components/money";
 import { Reveal } from "@/components/reveal";
-import { BarSeriesChart, DonutChart } from "@/components/charts";
+import { TrendChart } from "@/components/charts";
+import { DonutBreakdown } from "@/components/donut-breakdown";
 import { cn } from "@/lib/utils";
 import { hueColor, fmtMoney } from "@/lib/format";
 import type { BudgetStatus } from "@/lib/calc";
@@ -28,7 +29,7 @@ function barColor(pct: number): string {
 
 function Bar({ pct, className }: { pct: number; className?: string }) {
   return (
-    <div className={cn("overflow-hidden rounded-full bg-muted", className)}>
+    <div className={cn("w-full overflow-hidden rounded-full bg-muted", className)}>
       <div
         className="h-full rounded-full transition-all duration-500"
         style={{ width: `${Math.max(2, Math.min(100, pct * 100))}%`, background: barColor(pct) }}
@@ -46,7 +47,7 @@ export function BudgetView({
   currentMonth: string;
   daysLeft: number;
 }) {
-  const currentIdx = Math.max(0, statuses.findIndex((s) => s.month === currentMonth));
+  const currentIdx = statuses.findIndex((s) => s.month === currentMonth);
   const [idx, setIdx] = React.useState(currentIdx === -1 ? statuses.length - 1 : currentIdx);
   const status = statuses[idx];
 
@@ -73,12 +74,8 @@ export function BudgetView({
   const over = left < 0;
   const monthNum = Number(status.month.slice(5, 7));
   const summer = monthNum >= 6 && monthNum <= 8;
+  const monthShort = status.label.split(" ")[0];
 
-  const trendData = statuses.map((s) => ({
-    label: s.label.split(" ")[0],
-    Budget: s.totalBudget,
-    Spent: s.totalSpent,
-  }));
   const donut = status.categories
     .filter((c) => c.spent > 0)
     .map((c) => ({ name: c.name, value: c.spent, color: hueColor(c.hue) }));
@@ -114,39 +111,41 @@ export function BudgetView({
       {/* Headline */}
       <Reveal key={`h-${status.month}`}>
         <Card className="surface sheen overflow-hidden">
-          <CardContent className="p-5 sm:p-6">
-            <div className="flex flex-wrap items-end justify-between gap-4">
-              <div>
+          <CardContent className="flex flex-col gap-4 p-5 sm:p-6">
+            <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+              <div className="min-w-0">
                 <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                   {over ? "Over budget" : isCurrent ? "Left to spend" : "Under budget"} · {status.label}
                 </p>
                 <Money
                   value={Math.abs(left)}
                   cents
-                  className={cn("text-4xl font-bold tnum sm:text-5xl", over ? "text-negative" : "grad-text")}
+                  className={cn("block text-4xl font-bold tnum sm:text-5xl", over ? "text-negative" : "grad-text")}
                 />
                 <p className="mt-1 text-xs text-muted-foreground">
                   {isCurrent && !over
                     ? `${daysLeft} day${daysLeft === 1 ? "" : "s"} left · about ${fmtMoney(daily, { cents: true })}/day`
-                    : `${fmtMoney(status.totalSpent, { cents: true })} spent of ${fmtMoney(status.totalBudget, { cents: true })}`}
+                    : `${Math.round(pct * 100)}% of budget used`}
                 </p>
               </div>
-              <div className="space-y-1 text-right text-sm">
+              <div className="shrink-0 space-y-1 text-right text-sm">
                 <div className="text-muted-foreground">
-                  Spent <Money value={status.totalSpent} cents className="font-semibold text-foreground" />
+                  Spent <Money value={status.totalSpent} cents className="ml-1 font-semibold text-foreground" />
                 </div>
                 <div className="text-muted-foreground">
-                  Budget <Money value={status.totalBudget} cents className="font-semibold text-foreground" />
+                  Budget <Money value={status.totalBudget} cents className="ml-1 font-semibold text-foreground" />
                 </div>
               </div>
             </div>
-            <Bar pct={pct} className="mt-4 h-2.5" />
-            <p className="mt-1.5 text-xs text-muted-foreground">
-              {Math.round(pct * 100)}% of budget used
-              {status.unbudgetedSpent > 0.005
-                ? ` · ${fmtMoney(status.unbudgetedSpent, { cents: true })} uncategorized`
-                : ""}
-            </p>
+            <div>
+              <Bar pct={pct} className="h-2.5" />
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                {Math.round(pct * 100)}% of budget used
+                {status.unbudgetedSpent > 0.005
+                  ? ` · ${fmtMoney(status.unbudgetedSpent, { cents: true })} uncategorized`
+                  : ""}
+              </p>
+            </div>
           </CardContent>
         </Card>
       </Reveal>
@@ -155,14 +154,22 @@ export function BudgetView({
       <Reveal delay={60}>
         <div className="grid gap-4 lg:grid-cols-5">
           <Card className="surface lg:col-span-3">
-            <CardHeader>
-              <CardTitle>Budget vs spent by month</CardTitle>
+            <CardHeader className="flex-row items-center justify-between">
+              <CardTitle>Spending vs budget · {monthShort}</CardTitle>
+              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <span className="h-0.5 w-4 rounded-full" style={{ background: "var(--chart-1)" }} /> Spent
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-0 w-4 border-t-2 border-dashed" style={{ borderColor: "var(--chart-3)" }} /> Budget
+                </span>
+              </div>
             </CardHeader>
             <CardContent>
-              <BarSeriesChart
-                data={trendData}
+              <TrendChart
+                data={status.pacing}
                 series={[
-                  { key: "Budget", name: "Budget", color: "var(--chart-3)" },
+                  { key: "Budget", name: "Budget", color: "var(--chart-3)", dashed: true },
                   { key: "Spent", name: "Spent", color: "var(--chart-1)" },
                 ]}
                 height={260}
@@ -171,14 +178,10 @@ export function BudgetView({
           </Card>
           <Card className="surface lg:col-span-2">
             <CardHeader>
-              <CardTitle>Where it went · {status.label.split(" ")[0]}</CardTitle>
+              <CardTitle>Where it went · {monthShort}</CardTitle>
             </CardHeader>
             <CardContent>
-              {donut.length ? (
-                <DonutChart data={donut} height={260} />
-              ) : (
-                <p className="py-12 text-center text-sm text-muted-foreground">No spending this month.</p>
-              )}
+              <DonutBreakdown data={donut} height={200} centerLabel="Spent" emptyText="No spending this month." />
             </CardContent>
           </Card>
         </div>
@@ -188,7 +191,8 @@ export function BudgetView({
       <div className="flex items-start gap-2 rounded-xl border border-border bg-card/50 px-3.5 py-2.5 text-xs text-muted-foreground backdrop-blur-sm">
         <Sparkles className="mt-0.5 size-3.5 shrink-0 text-primary" />
         <p>
-          Budgets learn from your last 3 months and update automatically.
+          Each budget is a recency-weighted average of your last 3 months (one-off costs excluded),
+          recomputed monthly.
           {summer
             ? " You're in summer mode — as your internship months land, eating-out and other budgets rise to match, then ease back at school."
             : ""}{" "}
@@ -234,7 +238,7 @@ export function BudgetView({
                       </span>
                       <span className="shrink-0 tnum text-muted-foreground">
                         <Money value={c.spent} cents className="font-semibold text-foreground" /> /{" "}
-                        <Money value={c.budget} cents />
+                        {c.budget > 0 ? <Money value={c.budget} cents /> : <span>no budget</span>}
                       </span>
                     </div>
                     <Bar pct={cpct} className="mt-1.5 h-2" />
@@ -242,9 +246,11 @@ export function BudgetView({
                       className="mt-1 text-xs tnum"
                       style={{ color: c.remaining < 0 ? "var(--negative)" : "var(--muted-foreground)" }}
                     >
-                      {c.remaining >= 0
-                        ? `${fmtMoney(c.remaining, { cents: true })} left`
-                        : `${fmtMoney(-c.remaining, { cents: true })} over`}
+                      {c.budget <= 0
+                        ? "one-off / no budget"
+                        : c.remaining >= 0
+                          ? `${fmtMoney(c.remaining, { cents: true })} left`
+                          : `${fmtMoney(-c.remaining, { cents: true })} over`}
                     </p>
                   </div>
                 );

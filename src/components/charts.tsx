@@ -34,7 +34,7 @@ interface TipPayload {
 }
 
 /** Glassy, themed tooltip shared by every chart. */
-function ChartTooltip({
+export function ChartTooltip({
   active,
   payload,
   label,
@@ -68,7 +68,7 @@ function ChartTooltip({
 
 export interface SeriesPoint {
   label: string;
-  [key: string]: string | number;
+  [key: string]: string | number | null;
 }
 
 /** Smooth area trend (1–2 series). Used for balance / cumulative charts. */
@@ -78,7 +78,7 @@ export function TrendChart({
   height = 260,
 }: {
   data: SeriesPoint[];
-  series: { key: string; name: string; color?: string }[];
+  series: { key: string; name: string; color?: string; dashed?: boolean }[];
   height?: number;
 }) {
   return (
@@ -110,7 +110,10 @@ export function TrendChart({
               name={s.name}
               stroke={c}
               strokeWidth={2.5}
+              strokeDasharray={s.dashed ? "5 5" : undefined}
               fill={`url(#grad-${s.key})`}
+              fillOpacity={s.dashed ? 0.25 : 1}
+              connectNulls={false}
               dot={false}
               activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--background)" }}
               animationDuration={900}
