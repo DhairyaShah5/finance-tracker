@@ -99,13 +99,11 @@ export function BudgetView({
     .filter((c) => c.budget > 0 || c.spent > 0)
     .slice(0, 7)
     .map((c) => ({ label: c.name.split(" ")[0], Budget: c.budget, Spent: c.spent }));
-  let cs = 0;
-  let cb = 0;
-  const cumulative = statuses.map((s) => {
-    cs = Math.round((cs + s.totalSpent) * 100) / 100;
-    cb = Math.round((cb + s.totalBudget) * 100) / 100;
-    return { label: s.label.split(" ")[0], Spent: cs, Budget: cb };
-  });
+  const monthly = statuses.map((s) => ({
+    label: s.label.split(" ")[0],
+    Budget: s.totalBudget,
+    Spent: s.totalSpent,
+  }));
 
   return (
     <div className="space-y-4">
@@ -135,10 +133,10 @@ export function BudgetView({
         </Button>
       </div>
 
-      {/* Headline: big figure on the left, a compact meter on the right */}
+      {/* Headline. Inline padding so it can't be stripped by class merging. */}
       <Reveal key={`h-${status.month}`}>
-        <Card className="surface sheen overflow-hidden">
-          <CardContent className="flex flex-col gap-5 p-5 sm:p-6">
+        <Card className="surface sheen overflow-hidden" style={{ padding: "1.5rem" }}>
+          <div className="flex flex-col gap-5">
             <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-3">
               <div className="min-w-0">
                 <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -164,7 +162,7 @@ export function BudgetView({
                 </div>
               </div>
             </div>
-            <div className="space-y-1.5" style={{ maxWidth: "30rem" }}>
+            <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">{Math.round(pct * 100)}% used</span>
                 <span className={over ? "font-medium text-negative" : "font-medium text-positive"}>
@@ -173,15 +171,15 @@ export function BudgetView({
               </div>
               <Bar pct={pct} className="h-2.5" />
             </div>
-          </CardContent>
+          </div>
         </Card>
       </Reveal>
 
-      {/* Cumulative trajectory across all months */}
+      {/* Each month's own budget vs what was spent, across all months */}
       <Reveal delay={60}>
         <Card className="surface">
           <CardHeader className="flex-row items-center justify-between">
-            <CardTitle>Cumulative spending vs budget</CardTitle>
+            <CardTitle>Budget vs spent by month</CardTitle>
             <ChartLegend
               items={[
                 { label: "Spent", color: "var(--chart-1)" },
@@ -191,7 +189,7 @@ export function BudgetView({
           </CardHeader>
           <CardContent>
             <TrendChart
-              data={cumulative}
+              data={monthly}
               series={[
                 { key: "Budget", name: "Budget", color: "var(--chart-3)", dashed: true },
                 { key: "Spent", name: "Spent", color: "var(--chart-1)" },
