@@ -119,8 +119,8 @@ export function TrendChart({
               dot={
                 dots
                   ? s.dashed
-                    ? { r: 4, fill: "var(--background)", stroke: c, strokeWidth: 2 }
-                    : { r: 4, fill: c, stroke: "var(--background)", strokeWidth: 2 }
+                    ? { r: 4.5, fill: "var(--card)", stroke: c, strokeWidth: 2.5 }
+                    : { r: 4, fill: c, stroke: "var(--card)", strokeWidth: 2 }
                   : false
               }
               activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--background)" }}

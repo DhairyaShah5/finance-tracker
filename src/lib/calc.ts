@@ -332,23 +332,6 @@ export interface BudgetStatus {
   pacing: { label: string; Spent: number | null; Budget: number }[]; // cumulative
 }
 
-/** The k calendar months immediately before `month`, most-recent first. */
-function priorMonthKeys(month: string, k: number): string[] {
-  const [y0, m0] = month.split("-").map(Number);
-  const out: string[] = [];
-  let y = y0;
-  let m = m0;
-  for (let i = 0; i < k; i++) {
-    m -= 1;
-    if (m === 0) {
-      m = 12;
-      y -= 1;
-    }
-    out.push(`${y}-${String(m).padStart(2, "0")}`);
-  }
-  return out;
-}
-
 /**
  * This month's spend vs. an adaptive budget per category. The budget is a manual
  * pin if set, else a suggestion = median of your last 3 months' share of spend
@@ -363,6 +346,7 @@ export function monthlyBudgetStatus(
 ): BudgetStatus {
   const spentThis = new Map<string, number>();
   const byCatMonth = new Map<string, Map<string, number>>(); // catId -> month -> share
+  const allMonths = new Set<string>(); // every month with data (excl. target)
   const perDay = new Map<number, number>(); // day-of-month -> share (this month)
   let totalSpent = 0;
   let unbudgetedSpent = 0;
@@ -378,7 +362,8 @@ export function monthlyBudgetStatus(
       if (key === "__none__") unbudgetedSpent = round2(unbudgetedSpent + share);
       const day = Number(t.txn_date.slice(8, 10));
       perDay.set(day, round2((perDay.get(day) ?? 0) + share));
-    } else if (m < month) {
+    } else {
+      allMonths.add(m);
       let mm = byCatMonth.get(key);
       if (!mm) {
         mm = new Map();
@@ -388,17 +373,31 @@ export function monthlyBudgetStatus(
     }
   }
 
-  const pm = priorMonthKeys(month, 3);
-  const WEIGHTS = [0.5, 0.3, 0.2]; // recent months count most
+  // Learn from the 3 nearest months that have data (prior preferred). Early
+  // months without prior history fall back to the closest following months, so
+  // Aug/Sep still get a budget. Closer months are weighted more, and we add
+  // headroom (BUFFER) so typical months land under budget.
+  const monthIndex = (k: string) => {
+    const [y, mo] = k.split("-").map(Number);
+    return y * 12 + mo;
+  };
+  const tIdx = monthIndex(month);
+  const windowMonths = [...allMonths]
+    .map((k) => ({ key: k, dist: Math.abs(monthIndex(k) - tIdx), prior: monthIndex(k) < tIdx }))
+    .sort((a, b) => a.dist - b.dist || Number(b.prior) - Number(a.prior))
+    .slice(0, 3);
+  const wsum = windowMonths.reduce((s, w) => s + 1 / w.dist, 0) || 1;
+  const BUFFER = 1.3; // headroom so most months come in under budget
+
   const learn = (id: string) => {
     const mm = byCatMonth.get(id);
-    const vals = pm.map((m) => mm?.get(m) ?? 0); // [recent, prev, prev2]
-    // A category earns a budget only if it recurs (active in >= 2 of the last 3
-    // months); one-offs like an annual fee or a single splurge get $0. Otherwise
-    // it's a recency-weighted average, so the budget tracks your current level.
+    const vals = windowMonths.map((w) => mm?.get(w.key) ?? 0);
     const active = vals.filter((v) => v > 5).length;
-    const suggested =
-      active >= 2 ? Math.round(vals.reduce((s, v, i) => s + v * WEIGHTS[i], 0) / 5) * 5 : 0;
+    // A category earns a budget only if it recurs (active in >= 2 of the window);
+    // one-offs like an annual fee get $0.
+    if (active < 2) return { suggested: 0, trend: "flat" as const };
+    const wavg = windowMonths.reduce((s, w, i) => s + vals[i] / w.dist, 0) / wsum;
+    const suggested = Math.round((wavg * BUFFER) / 5) * 5;
     const [recent, prev] = vals;
     const trend: "up" | "down" | "flat" =
       recent > prev * 1.15 && recent > 5 ? "up" : recent < prev * 0.85 && prev > 5 ? "down" : "flat";
