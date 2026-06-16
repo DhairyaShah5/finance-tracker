@@ -138,36 +138,40 @@ export function BudgetView({
       {/* Headline: big figure on the left, a compact meter on the right */}
       <Reveal key={`h-${status.month}`}>
         <Card className="surface sheen overflow-hidden">
-          <CardContent className="flex flex-wrap items-center justify-between gap-x-8 gap-y-5 p-5 sm:p-6">
-            <div className="min-w-0">
-              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                {over ? "Over budget" : isCurrent ? "Left to spend" : "Under budget"} · {status.label}
-              </p>
-              <Money
-                value={Math.abs(left)}
-                cents
-                className={cn("block text-4xl font-bold tnum sm:text-5xl", over ? "text-negative" : "grad-text")}
-              />
-              <p className="mt-1 text-xs text-muted-foreground">
-                {isCurrent && !over
-                  ? `${daysLeft} day${daysLeft === 1 ? "" : "s"} left · about ${fmtMoney(daily, { cents: true })}/day`
-                  : `${Math.round(pct * 100)}% of your budget used`}
-              </p>
+          <CardContent className="flex flex-col gap-5 p-5 sm:p-6">
+            <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-3">
+              <div className="min-w-0">
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  {over ? "Over budget" : isCurrent ? "Left to spend" : "Under budget"} · {status.label}
+                </p>
+                <Money
+                  value={Math.abs(left)}
+                  cents
+                  className={cn("block text-4xl font-bold tnum sm:text-5xl", over ? "text-negative" : "grad-text")}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {isCurrent
+                    ? `${daysLeft} day${daysLeft === 1 ? "" : "s"} left${!over ? ` · about ${fmtMoney(daily, { cents: true })}/day` : ""}`
+                    : `${Math.round(pct * 100)}% of your budget used`}
+                </p>
+              </div>
+              <div className="shrink-0 space-y-1 text-right text-sm tnum">
+                <div className="text-muted-foreground">
+                  Spent <Money value={status.totalSpent} cents className="ml-1 font-semibold text-foreground" />
+                </div>
+                <div className="text-muted-foreground">
+                  Budget <Money value={status.totalBudget} cents className="ml-1 font-semibold text-foreground" />
+                </div>
+              </div>
             </div>
-            <div className="w-full max-w-xs">
-              <div className="mb-1.5 flex items-center justify-between text-xs">
+            <div className="space-y-1.5" style={{ maxWidth: "30rem" }}>
+              <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">{Math.round(pct * 100)}% used</span>
                 <span className={over ? "font-medium text-negative" : "font-medium text-positive"}>
-                  {over
-                    ? `${fmtMoney(-left, { cents: true })} over`
-                    : `${fmtMoney(left, { cents: true })} left`}
+                  {over ? `${fmtMoney(-left, { cents: true })} over` : `${fmtMoney(left, { cents: true })} left`}
                 </span>
               </div>
               <Bar pct={pct} className="h-2.5" />
-              <div className="mt-1.5 flex items-center justify-between text-xs text-muted-foreground tnum">
-                <span>Spent {fmtMoney(status.totalSpent, { cents: true })}</span>
-                <span>of {fmtMoney(status.totalBudget, { cents: true })}</span>
-              </div>
             </div>
           </CardContent>
         </Card>
