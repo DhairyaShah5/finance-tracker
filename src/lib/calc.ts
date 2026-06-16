@@ -300,82 +300,140 @@ export function reconcile(txns: TransactionRow[], netWorth: number): Reconciliat
 }
 
 // ---------------------------------------------------------------------------
-// Budgets - per-category monthly target vs. actual spend for a given month
+// Budgets - adaptive per-category monthly targets vs. actual spend.
+// Each budget is the effective number: a manual pin if set, otherwise a
+// suggestion learned from your recent spending (a weighted trailing average), so
+// it follows your patterns - e.g. eating-out rises during a summer internship
+// and falls again back at school.
 // ---------------------------------------------------------------------------
 export interface CategoryBudget {
   id: string;
   name: string;
   hue: number | null;
-  budget: number; // monthly target (0 if unset)
+  budget: number; // effective: pinned if set, else the learned suggestion
+  pinned: number | null; // manual override, null = auto
+  suggested: number; // learned from recent months
+  isAuto: boolean; // budget came from the suggestion (no pin)
   spent: number; // your share spent this month
   remaining: number; // budget - spent (negative = over)
   pct: number; // spent / budget
-  hasBudget: boolean;
+  trend: "up" | "down" | "flat"; // recent direction of spend
 }
 export interface BudgetStatus {
   month: string;
   label: string;
   categories: CategoryBudget[];
   totalBudget: number;
-  totalSpent: number; // all non-savings spend this month (incl. unbudgeted)
-  budgetedSpent: number; // spend only within budgeted categories
-  remaining: number; // totalBudget - budgetedSpent
+  totalSpent: number; // all non-savings spend this month (incl. uncategorized)
+  unbudgetedSpent: number; // uncategorized spend this month
+  remaining: number; // totalBudget - totalSpent
   pct: number;
+  anyPinned: boolean;
+}
+
+/** The k calendar months immediately before `month`, most-recent first. */
+function priorMonthKeys(month: string, k: number): string[] {
+  const [y0, m0] = month.split("-").map(Number);
+  const out: string[] = [];
+  let y = y0;
+  let m = m0;
+  for (let i = 0; i < k; i++) {
+    m -= 1;
+    if (m === 0) {
+      m = 12;
+      y -= 1;
+    }
+    out.push(`${y}-${String(m).padStart(2, "0")}`);
+  }
+  return out;
 }
 
 /**
- * Compare this month's actual spend (your share, non-savings) against each
- * category's monthly budget. Categories with a budget OR with spend appear;
- * the rest are hidden. Drives the "how much is left to spend" view.
+ * This month's spend vs. an adaptive budget per category. The budget is a manual
+ * pin if set, else a suggestion = median of your last 3 months' share of spend
+ * (robust to one-off months), rounded to $5. Recomputed every month, so it
+ * tracks your patterns automatically.
  */
 export function monthlyBudgetStatus(
   txns: TransactionRow[],
   categories: CategoryRow[],
   month: string,
 ): BudgetStatus {
-  const spentByCat = new Map<string, number>();
+  const spentThis = new Map<string, number>();
+  const byCatMonth = new Map<string, Map<string, number>>(); // catId -> month -> share
   let totalSpent = 0;
+  let unbudgetedSpent = 0;
   for (const t of txns) {
     if (t.is_transfer || t.direction !== "outflow" || isSavingsTxn(t)) continue;
-    if (monthKey(t.txn_date) !== month) continue;
     const share = myAmount(t);
     if (share === 0) continue;
-    totalSpent = round2(totalSpent + share);
+    const m = monthKey(t.txn_date);
     const key = t.category_id ?? "__none__";
-    spentByCat.set(key, round2((spentByCat.get(key) ?? 0) + share));
+    if (m === month) {
+      totalSpent = round2(totalSpent + share);
+      spentThis.set(key, round2((spentThis.get(key) ?? 0) + share));
+      if (key === "__none__") unbudgetedSpent = round2(unbudgetedSpent + share);
+    } else if (m < month) {
+      let mm = byCatMonth.get(key);
+      if (!mm) {
+        mm = new Map();
+        byCatMonth.set(key, mm);
+      }
+      mm.set(m, round2((mm.get(m) ?? 0) + share));
+    }
   }
 
-  const cats: CategoryBudget[] = categories
-    .map((c) => {
-      const budget = round2(c.monthly_budget ?? 0);
-      const spent = round2(spentByCat.get(c.id) ?? 0);
-      return {
-        id: c.id,
-        name: c.name,
-        hue: c.color_hue,
-        budget,
-        spent,
-        remaining: round2(budget - spent),
-        pct: budget > 0 ? spent / budget : spent > 0 ? Infinity : 0,
-        hasBudget: c.monthly_budget != null,
-      };
-    })
-    .filter((c) => c.hasBudget || c.spent > 0)
-    .sort((a, b) => b.budget - a.budget || b.spent - a.spent);
+  const pm = priorMonthKeys(month, 3);
+  const learn = (id: string) => {
+    const mm = byCatMonth.get(id);
+    const vals = pm.map((m) => mm?.get(m) ?? 0); // [recent, prev, prev2]
+    // Median of the last 3 months - robust to one-off lumpy months, so an annual
+    // fee or a single splurge won't inflate the monthly budget.
+    const median = [...vals].sort((a, b) => a - b)[1];
+    const suggested = Math.round(median / 5) * 5;
+    const [recent, prev] = vals;
+    const trend: "up" | "down" | "flat" =
+      recent > prev * 1.15 && recent > 5 ? "up" : recent < prev * 0.85 && prev > 5 ? "down" : "flat";
+    return { suggested, trend };
+  };
 
-  const totalBudget = round2(categories.reduce((s, c) => s + (c.monthly_budget ?? 0), 0));
-  const budgetedSpent = round2(
-    cats.filter((c) => c.hasBudget).reduce((s, c) => s + c.spent, 0),
-  );
+  let totalBudget = 0;
+  let anyPinned = false;
+  const cats: CategoryBudget[] = [];
+  for (const c of categories) {
+    const { suggested, trend } = learn(c.id);
+    const pinned = c.monthly_budget != null ? round2(c.monthly_budget) : null;
+    if (pinned != null) anyPinned = true;
+    const budget = pinned != null ? pinned : suggested;
+    const spent = round2(spentThis.get(c.id) ?? 0);
+    totalBudget = round2(totalBudget + budget);
+    if (budget <= 0 && spent <= 0) continue; // nothing meaningful to show
+    cats.push({
+      id: c.id,
+      name: c.name,
+      hue: c.color_hue,
+      budget,
+      pinned,
+      suggested,
+      isAuto: pinned == null,
+      spent,
+      remaining: round2(budget - spent),
+      pct: budget > 0 ? spent / budget : spent > 0 ? 9 : 0,
+      trend,
+    });
+  }
+  cats.sort((a, b) => b.budget - a.budget || b.spent - a.spent);
+
   return {
     month,
     label: monthLabel(month),
     categories: cats,
-    totalBudget,
+    totalBudget: round2(totalBudget),
     totalSpent: round2(totalSpent),
-    budgetedSpent,
-    remaining: round2(totalBudget - budgetedSpent),
-    pct: totalBudget > 0 ? budgetedSpent / totalBudget : 0,
+    unbudgetedSpent: round2(unbudgetedSpent),
+    remaining: round2(totalBudget - totalSpent),
+    pct: totalBudget > 0 ? totalSpent / totalBudget : 0,
+    anyPinned,
   };
 }
 

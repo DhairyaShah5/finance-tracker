@@ -112,8 +112,9 @@ function CategoriesSection({ categories }: { categories: CategoryRow[] }) {
           <Tag className="size-3.5" /> Categories
         </CardTitle>
         <CardDescription>
-          Name each category, pick a swatch color, and set an optional monthly budget (tracked on
-          the Budget page). Needs / Wants / Savings is set per transaction.
+          Name each category, pick a swatch color, and optionally pin a monthly budget. Leave the
+          budget blank to auto-adapt it to your recent spending. Needs / Wants / Savings is set per
+          transaction.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -149,7 +150,7 @@ function CategoriesSection({ categories }: { categories: CategoryRow[] }) {
                     value={editBudget}
                     onChange={(e) => setEditBudget(e.target.value)}
                     className="h-8 w-24"
-                    placeholder="$/mo"
+                    placeholder="auto"
                     aria-label="Monthly budget"
                   />
                   <Button size="icon" className="size-8" onClick={() => saveEdit(c.id)} disabled={pending}>
@@ -221,7 +222,7 @@ function CategoriesSection({ categories }: { categories: CategoryRow[] }) {
               value={newBudget}
               onChange={(e) => setNewBudget(e.target.value)}
               className="w-24"
-              placeholder="$"
+              placeholder="auto"
             />
           </div>
           <Button onClick={add} disabled={pending} className="gap-1.5">
