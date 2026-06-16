@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { MoreHorizontal, Pencil, Plus, Trash2, Users } from "lucide-react";
+import { HandCoins, MoreHorizontal, Pencil, Plus, Trash2, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -24,14 +24,23 @@ import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
 import { Money } from "@/components/money";
 import { sumOwed } from "@/lib/calc";
-import type { DebtorRow } from "@/lib/database.types";
+import type { AccountRow, DebtorRow } from "@/lib/database.types";
 import { DebtorDialog } from "./debtor-dialog";
+import { SettleDialog } from "./settle-dialog";
 import { deleteDebtor } from "./actions";
 
-export function DebtorsView({ debtors }: { debtors: DebtorRow[] }) {
+export function DebtorsView({
+  debtors,
+  accounts,
+}: {
+  debtors: DebtorRow[];
+  accounts: AccountRow[];
+}) {
   const router = useRouter();
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<DebtorRow | null>(null);
+  const [settleOpen, setSettleOpen] = React.useState(false);
+  const [settling, setSettling] = React.useState<DebtorRow | null>(null);
 
   const owed = sumOwed(debtors);
 
@@ -42,6 +51,10 @@ export function DebtorsView({ debtors }: { debtors: DebtorRow[] }) {
   function onEdit(d: DebtorRow) {
     setEditing(d);
     setDialogOpen(true);
+  }
+  function onSettle(d: DebtorRow) {
+    setSettling(d);
+    setSettleOpen(true);
   }
   function onDelete(d: DebtorRow) {
     if (!window.confirm(`Delete "${d.name}"?`)) return;
@@ -99,7 +112,7 @@ export function DebtorsView({ debtors }: { debtors: DebtorRow[] }) {
                 <TableHead>Name</TableHead>
                 <TableHead className="hidden sm:table-cell">Note</TableHead>
                 <TableHead className="text-right">Owes</TableHead>
-                <TableHead className="w-10" />
+                <TableHead className="w-px" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -113,21 +126,42 @@ export function DebtorsView({ debtors }: { debtors: DebtorRow[] }) {
                     <Money value={d.amount} cents colored={d.amount > 0} className="font-medium" />
                   </TableCell>
                   <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="size-7">
-                          <MoreHorizontal className="size-4" />
+                    <div className="flex items-center justify-end gap-1">
+                      {d.amount > 0 ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 gap-1.5"
+                          onClick={() => onSettle(d)}
+                        >
+                          <HandCoins className="size-3.5" /> Settle up
                         </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => onEdit(d)}>
-                          <Pencil className="size-4" /> Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem variant="destructive" onClick={() => onDelete(d)}>
-                          <Trash2 className="size-4" /> Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                      ) : (
+                        <span className="rounded-full bg-secondary px-2 py-0.5 text-xs text-positive">
+                          Settled
+                        </span>
+                      )}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="size-7">
+                            <MoreHorizontal className="size-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {d.amount > 0 ? (
+                            <DropdownMenuItem onClick={() => onSettle(d)}>
+                              <HandCoins className="size-4" /> Settle up
+                            </DropdownMenuItem>
+                          ) : null}
+                          <DropdownMenuItem onClick={() => onEdit(d)}>
+                            <Pencil className="size-4" /> Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem variant="destructive" onClick={() => onDelete(d)}>
+                            <Trash2 className="size-4" /> Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -137,6 +171,12 @@ export function DebtorsView({ debtors }: { debtors: DebtorRow[] }) {
       )}
 
       <DebtorDialog open={dialogOpen} onOpenChange={setDialogOpen} existing={editing} />
+      <SettleDialog
+        open={settleOpen}
+        onOpenChange={setSettleOpen}
+        debtor={settling}
+        accounts={accounts}
+      />
     </div>
   );
 }
