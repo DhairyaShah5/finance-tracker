@@ -7,7 +7,6 @@ import type {
   CategoryRow,
   DebtorRow,
   IndiaTransferRow,
-  InflowTypeRow,
   SettingsRow,
   TransactionRow,
 } from "@/lib/database.types";
@@ -144,21 +143,6 @@ export function realBalanceTrend(txns: TransactionRow[], netWorth: number): Bala
     out.push({ month: m, label: monthLabel(m), balance: running });
   }
   return out;
-}
-
-/** Running available funds = starting_funds + Σ signed (Excel closing balance). */
-export function runningBalance(
-  txns: TransactionRow[],
-  settings: Pick<SettingsRow, "starting_funds">,
-  uptoDate?: string,
-): number {
-  let bal = settings.starting_funds;
-  for (const t of txns) {
-    if (t.is_transfer) continue; // transfers move money between own accounts
-    if (uptoDate && t.txn_date > uptoDate) continue;
-    bal += signed(t);
-  }
-  return round2(bal);
 }
 
 // ---------------------------------------------------------------------------
@@ -513,38 +497,6 @@ export function accountActivity(
       };
     })
     .sort((a, b) => a.account.display_order - b.account.display_order);
-}
-
-// ---------------------------------------------------------------------------
-// Inflow type & "whose expense" breakdowns
-// ---------------------------------------------------------------------------
-export function inflowTypeTotals(
-  txns: TransactionRow[],
-  inflowTypes: InflowTypeRow[],
-): { id: string | null; name: string; total: number; count: number }[] {
-  const byId = new Map(inflowTypes.map((i) => [i.id, i]));
-  const agg = new Map<string | null, { total: number; count: number }>();
-  for (const t of txns) {
-    if (t.direction !== "inflow" || t.is_transfer) continue;
-    const cur = agg.get(t.inflow_type_id) ?? { total: 0, count: 0 };
-    cur.total += t.amount;
-    cur.count += 1;
-    agg.set(t.inflow_type_id, cur);
-  }
-  return [...agg.entries()]
-    .map(([id, v]) => ({
-      id,
-      name: (id ? byId.get(id)?.name : undefined) ?? "Other",
-      total: round2(v.total),
-      count: v.count,
-    }))
-    .sort((a, b) => b.total - a.total);
-}
-
-/** Count paychecks (inflow rows whose type is flagged is_paycheck). */
-export function paycheckCount(txns: TransactionRow[], inflowTypes: InflowTypeRow[]): number {
-  const paycheckIds = new Set(inflowTypes.filter((i) => i.is_paycheck).map((i) => i.id));
-  return txns.filter((t) => t.direction === "inflow" && t.inflow_type_id && paycheckIds.has(t.inflow_type_id)).length;
 }
 
 // ---------------------------------------------------------------------------
