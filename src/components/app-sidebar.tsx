@@ -11,6 +11,7 @@ import {
   Settings,
   Wallet,
   PieChart,
+  Target,
   Menu,
   LogOut,
 } from "lucide-react";
@@ -24,6 +25,7 @@ const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/transactions", label: "Transactions", icon: ReceiptText },
   { href: "/insights", label: "Insights", icon: PieChart },
+  { href: "/budget", label: "Budget", icon: Target },
   { href: "/accounts", label: "Accounts", icon: Landmark },
   { href: "/india", label: "India Transfers", icon: Globe },
   { href: "/debtors", label: "Debtors", icon: Users },

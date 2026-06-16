@@ -70,6 +70,7 @@ export interface Database {
           name: string;
           color_hue: number | null;
           annual_budget: number | null;
+          monthly_budget: number | null;
           budget_group: "needs" | "wants" | "savings" | null;
           display_order: number;
         } & Timestamps;
@@ -79,6 +80,7 @@ export interface Database {
           name: string;
           color_hue?: number | null;
           annual_budget?: number | null;
+          monthly_budget?: number | null;
           budget_group?: "needs" | "wants" | "savings" | null;
           display_order?: number;
           created_at?: string;

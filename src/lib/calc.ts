@@ -299,6 +299,86 @@ export function reconcile(txns: TransactionRow[], netWorth: number): Reconciliat
   return { income, arrivalCapital, consumption, settled, spending, savings, currentBalance };
 }
 
+// ---------------------------------------------------------------------------
+// Budgets - per-category monthly target vs. actual spend for a given month
+// ---------------------------------------------------------------------------
+export interface CategoryBudget {
+  id: string;
+  name: string;
+  hue: number | null;
+  budget: number; // monthly target (0 if unset)
+  spent: number; // your share spent this month
+  remaining: number; // budget - spent (negative = over)
+  pct: number; // spent / budget
+  hasBudget: boolean;
+}
+export interface BudgetStatus {
+  month: string;
+  label: string;
+  categories: CategoryBudget[];
+  totalBudget: number;
+  totalSpent: number; // all non-savings spend this month (incl. unbudgeted)
+  budgetedSpent: number; // spend only within budgeted categories
+  remaining: number; // totalBudget - budgetedSpent
+  pct: number;
+}
+
+/**
+ * Compare this month's actual spend (your share, non-savings) against each
+ * category's monthly budget. Categories with a budget OR with spend appear;
+ * the rest are hidden. Drives the "how much is left to spend" view.
+ */
+export function monthlyBudgetStatus(
+  txns: TransactionRow[],
+  categories: CategoryRow[],
+  month: string,
+): BudgetStatus {
+  const spentByCat = new Map<string, number>();
+  let totalSpent = 0;
+  for (const t of txns) {
+    if (t.is_transfer || t.direction !== "outflow" || isSavingsTxn(t)) continue;
+    if (monthKey(t.txn_date) !== month) continue;
+    const share = myAmount(t);
+    if (share === 0) continue;
+    totalSpent = round2(totalSpent + share);
+    const key = t.category_id ?? "__none__";
+    spentByCat.set(key, round2((spentByCat.get(key) ?? 0) + share));
+  }
+
+  const cats: CategoryBudget[] = categories
+    .map((c) => {
+      const budget = round2(c.monthly_budget ?? 0);
+      const spent = round2(spentByCat.get(c.id) ?? 0);
+      return {
+        id: c.id,
+        name: c.name,
+        hue: c.color_hue,
+        budget,
+        spent,
+        remaining: round2(budget - spent),
+        pct: budget > 0 ? spent / budget : spent > 0 ? Infinity : 0,
+        hasBudget: c.monthly_budget != null,
+      };
+    })
+    .filter((c) => c.hasBudget || c.spent > 0)
+    .sort((a, b) => b.budget - a.budget || b.spent - a.spent);
+
+  const totalBudget = round2(categories.reduce((s, c) => s + (c.monthly_budget ?? 0), 0));
+  const budgetedSpent = round2(
+    cats.filter((c) => c.hasBudget).reduce((s, c) => s + c.spent, 0),
+  );
+  return {
+    month,
+    label: monthLabel(month),
+    categories: cats,
+    totalBudget,
+    totalSpent: round2(totalSpent),
+    budgetedSpent,
+    remaining: round2(totalBudget - budgetedSpent),
+    pct: totalBudget > 0 ? budgetedSpent / totalBudget : 0,
+  };
+}
+
 /** Monthly income (counted = paycheck inflows) keyed by month. */
 export function incomeByMonth(txns: TransactionRow[]): Map<string, number> {
   const m = new Map<string, number>();
