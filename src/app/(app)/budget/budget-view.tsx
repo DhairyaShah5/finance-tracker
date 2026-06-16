@@ -195,6 +195,7 @@ export function BudgetView({
                 { key: "Spent", name: "Spent", color: "var(--chart-1)" },
               ]}
               height={260}
+              dots
             />
           </CardContent>
         </Card>

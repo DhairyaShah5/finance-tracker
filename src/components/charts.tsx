@@ -76,10 +76,12 @@ export function TrendChart({
   data,
   series,
   height = 260,
+  dots = false,
 }: {
   data: SeriesPoint[];
   series: { key: string; name: string; color?: string; dashed?: boolean }[];
   height?: number;
+  dots?: boolean;
 }) {
   return (
     <ResponsiveContainer width="100%" height={height}>
@@ -114,7 +116,13 @@ export function TrendChart({
               fill={`url(#grad-${s.key})`}
               fillOpacity={s.dashed ? 0.25 : 1}
               connectNulls={false}
-              dot={false}
+              dot={
+                dots
+                  ? s.dashed
+                    ? { r: 4, fill: "var(--background)", stroke: c, strokeWidth: 2 }
+                    : { r: 4, fill: c, stroke: "var(--background)", strokeWidth: 2 }
+                  : false
+              }
               activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--background)" }}
               animationDuration={900}
             />
