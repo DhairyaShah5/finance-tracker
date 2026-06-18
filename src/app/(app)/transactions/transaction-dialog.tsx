@@ -33,6 +33,7 @@ import type {
 import { WHOSE_EXPENSE_VALUES } from "@/lib/defaults";
 import { fmtMoney } from "@/lib/format";
 import { createTransaction, updateTransaction, type TransactionInput } from "./actions";
+import { logTransfer } from "@/app/(app)/accounts/actions";
 
 const NONE = "__none__";
 const today = () => new Date().toISOString().slice(0, 10);
@@ -66,6 +67,7 @@ export function TransactionDialog({
   const [amount, setAmount] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [accountId, setAccountId] = React.useState("");
+  const [toAccountId, setToAccountId] = React.useState(""); // transfer destination (new transfers only)
   const [categoryId, setCategoryId] = React.useState(NONE);
   const [budgetGroup, setBudgetGroup] = React.useState(NONE);
   const [inflowTypeId, setInflowTypeId] = React.useState(NONE);
@@ -97,6 +99,7 @@ export function TransactionDialog({
       setAmount("");
       setDescription("");
       setAccountId(lookups.accounts[0]?.id ?? "");
+      setToAccountId(lookups.accounts[1]?.id ?? "");
       setCategoryId(NONE);
       setBudgetGroup(NONE);
       setInflowTypeId(NONE);
@@ -108,6 +111,36 @@ export function TransactionDialog({
   }, [open, existing, lookups.accounts]);
 
   function submit() {
+    // A brand-new transfer is a two-legged move between accounts (out of one,
+    // into another). Editing an existing transfer still tweaks the single leg.
+    if (mode === "transfer" && !existing) {
+      if (!accountId || !toAccountId) {
+        toast.error("Pick both accounts.");
+        return;
+      }
+      if (accountId === toAccountId) {
+        toast.error("Choose two different accounts.");
+        return;
+      }
+      start(async () => {
+        const res = await logTransfer({
+          from_account_id: accountId,
+          to_account_id: toAccountId,
+          amount,
+          date,
+          note: description.trim() || notes.trim() || null,
+        });
+        if (!res.ok) {
+          toast.error(res.error ?? "Failed to transfer.");
+          return;
+        }
+        toast.success("Transfer added.");
+        onOpenChange(false);
+        router.refresh();
+      });
+      return;
+    }
+
     const direction = mode === "transfer" ? transferDir : mode === "income" ? "inflow" : "outflow";
     const input: TransactionInput = {
       txn_date: date,
@@ -195,58 +228,85 @@ export function TransactionDialog({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>Account</Label>
-              <Select value={accountId} onValueChange={setAccountId}>
-                <SelectTrigger><SelectValue placeholder="Account" /></SelectTrigger>
-                <SelectContent>
-                  {lookups.accounts.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          {mode === "transfer" && !existing ? (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>From</Label>
+                <Select value={accountId} onValueChange={setAccountId}>
+                  <SelectTrigger><SelectValue placeholder="Account" /></SelectTrigger>
+                  <SelectContent>
+                    {lookups.accounts.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>To</Label>
+                <Select value={toAccountId} onValueChange={setToAccountId}>
+                  <SelectTrigger><SelectValue placeholder="Account" /></SelectTrigger>
+                  <SelectContent>
+                    {lookups.accounts.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Account</Label>
+                <Select value={accountId} onValueChange={setAccountId}>
+                  <SelectTrigger><SelectValue placeholder="Account" /></SelectTrigger>
+                  <SelectContent>
+                    {lookups.accounts.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-            {mode === "expense" ? (
-              <div className="space-y-1.5">
-                <Label>Category</Label>
-                <Select value={categoryId} onValueChange={setCategoryId}>
-                  <SelectTrigger><SelectValue placeholder="Category" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NONE}>Uncategorized</SelectItem>
-                    {lookups.categories.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ) : mode === "income" ? (
-              <div className="space-y-1.5">
-                <Label>Income type</Label>
-                <Select value={inflowTypeId} onValueChange={setInflowTypeId}>
-                  <SelectTrigger><SelectValue placeholder="Type" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NONE}>Unspecified</SelectItem>
-                    {lookups.inflowTypes.map((i) => (
-                      <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ) : (
-              <div className="space-y-1.5">
-                <Label>Direction</Label>
-                <Select value={transferDir} onValueChange={(v) => setTransferDir(v as "outflow" | "inflow")}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="outflow">Out of this account</SelectItem>
-                    <SelectItem value="inflow">Into this account</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
+              {mode === "expense" ? (
+                <div className="space-y-1.5">
+                  <Label>Category</Label>
+                  <Select value={categoryId} onValueChange={setCategoryId}>
+                    <SelectTrigger><SelectValue placeholder="Category" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NONE}>Uncategorized</SelectItem>
+                      {lookups.categories.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : mode === "income" ? (
+                <div className="space-y-1.5">
+                  <Label>Income type</Label>
+                  <Select value={inflowTypeId} onValueChange={setInflowTypeId}>
+                    <SelectTrigger><SelectValue placeholder="Type" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NONE}>Unspecified</SelectItem>
+                      {lookups.inflowTypes.map((i) => (
+                        <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <Label>Direction</Label>
+                  <Select value={transferDir} onValueChange={(v) => setTransferDir(v as "outflow" | "inflow")}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="outflow">Out of this account</SelectItem>
+                      <SelectItem value="inflow">Into this account</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+          )}
 
           {mode === "expense" ? (
             <>

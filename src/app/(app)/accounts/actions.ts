@@ -7,6 +7,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
 import { ACCOUNT_TYPES } from "@/lib/defaults";
 
+type TxnInsert = Database["public"]["Tables"]["transactions"]["Insert"];
+
 const schema = z.object({
   name: z.string().trim().min(1, "Name is required."),
   bank: z.string().trim().min(1).optional(),
@@ -124,10 +126,18 @@ export type TransferInput = z.input<typeof transferSchema>;
 
 /**
  * Log a transfer between two accounts: an outflow on `from` and an inflow on
- * `to`, both flagged is_transfer so they update balances but never count as
- * income or spending. Paying a credit card => from = checking, to = card: the
- * card's negative (owed) balance rises toward 0 while checking drops. A card
- * with a positive (credit) balance is settled the other way (from = card).
+ * `to`. Both legs update balances but never count as income or spending.
+ *
+ * Special case — moving money INTO an account that's excluded from net worth
+ * (a savings/investment stash like Marcus HYSA or RobinHood): that's saving,
+ * not a neutral shuffle. Because the destination sits outside net worth, a plain
+ * transfer would drop net worth without anything to balance it (it'd leak into
+ * the "settled" residual and overstate spending). So the source leg is booked as
+ * a `savings` outflow (counts toward savings, offsets the net-worth drop) while
+ * the destination leg stays a transfer that simply grows the stash's balance.
+ *
+ * Paying a credit card => from = checking, to = card: the card's negative (owed)
+ * balance rises toward 0 while checking drops.
  */
 export async function logTransfer(input: TransferInput): Promise<ActionResult> {
   const parsed = transferSchema.safeParse(input);
@@ -141,34 +151,51 @@ export async function logTransfer(input: TransferInput): Promise<ActionResult> {
 
   const { data: accts } = await supabase
     .from("accounts")
-    .select("id, name")
+    .select("id, name, include_in_net_worth")
     .eq("user_id", user.id)
     .in("id", [d.from_account_id, d.to_account_id]);
   const nameOf = (id: string) => accts?.find((a) => a.id === id)?.name ?? "account";
   const note = d.note?.trim() || null;
+  const amount = round2(d.amount);
 
-  const { error } = await supabase.from("transactions").insert([
-    {
-      user_id: user.id,
-      txn_date: d.date,
-      account_id: d.from_account_id,
-      description: note ?? `Transfer to ${nameOf(d.to_account_id)}`,
-      direction: "outflow",
-      amount: round2(d.amount),
-      is_transfer: true,
-    },
-    {
-      user_id: user.id,
-      txn_date: d.date,
-      account_id: d.to_account_id,
-      description: note ?? `Transfer from ${nameOf(d.from_account_id)}`,
-      direction: "inflow",
-      amount: round2(d.amount),
-      is_transfer: true,
-    },
-  ]);
+  // Destination outside net worth => this is a savings deposit, not a shuffle.
+  const toExcluded = accts?.find((a) => a.id === d.to_account_id)?.include_in_net_worth === false;
+
+  const source: TxnInsert = toExcluded
+    ? {
+        user_id: user.id,
+        txn_date: d.date,
+        account_id: d.from_account_id,
+        description: note ?? `Savings to ${nameOf(d.to_account_id)}`,
+        direction: "outflow",
+        amount,
+        is_transfer: false,
+        budget_group: "savings",
+        whose_expense: "My",
+      }
+    : {
+        user_id: user.id,
+        txn_date: d.date,
+        account_id: d.from_account_id,
+        description: note ?? `Transfer to ${nameOf(d.to_account_id)}`,
+        direction: "outflow",
+        amount,
+        is_transfer: true,
+      };
+
+  const destination: TxnInsert = {
+    user_id: user.id,
+    txn_date: d.date,
+    account_id: d.to_account_id,
+    description: note ?? `Transfer from ${nameOf(d.from_account_id)}`,
+    direction: "inflow",
+    amount,
+    is_transfer: true,
+  };
+
+  const { error } = await supabase.from("transactions").insert([source, destination]);
   if (error) return { ok: false, error: error.message };
-  for (const p of ["/accounts", "/", "/transactions", "/insights"]) revalidatePath(p);
+  for (const p of ["/accounts", "/", "/transactions", "/insights", "/budget"]) revalidatePath(p);
   return { ok: true };
 }
 
