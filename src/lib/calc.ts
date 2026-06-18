@@ -473,6 +473,7 @@ export interface AccountActivity {
 export function accountActivity(
   txns: TransactionRow[],
   accounts: AccountRow[],
+  categories?: Pick<CategoryRow, "id" | "linked_account_id">[],
 ): AccountActivity[] {
   const agg = new Map<string, { inflow: number; outflow: number; delta: number }>();
   for (const t of txns) {
@@ -485,15 +486,31 @@ export function accountActivity(
     }
     agg.set(t.account_id, cur);
   }
+
+  // Category-linked deposits: an outflow in a category that points to a
+  // destination account (e.g. "Investment" -> RobinHood) is money landing in
+  // that account, so it raises the destination's balance (and shows as inflow).
+  const credit = new Map<string, number>();
+  const linkOf = new Map((categories ?? []).map((c) => [c.id, c.linked_account_id]));
+  if (categories?.length) {
+    for (const t of txns) {
+      if (t.direction !== "outflow" || t.is_transfer || !t.category_id) continue;
+      const dest = linkOf.get(t.category_id);
+      if (!dest) continue;
+      credit.set(dest, (credit.get(dest) ?? 0) + t.amount);
+    }
+  }
+
   return accounts
     .map((account) => {
       const { inflow = 0, outflow = 0, delta = 0 } = agg.get(account.id) ?? {};
+      const linked = credit.get(account.id) ?? 0;
       return {
         account,
-        inflow: round2(inflow),
+        inflow: round2(inflow + linked),
         outflow: round2(outflow),
-        net: round2(inflow - outflow),
-        balance: round2(account.opening_balance + delta),
+        net: round2(inflow + linked - outflow),
+        balance: round2(account.opening_balance + delta + linked),
       };
     })
     .sort((a, b) => a.account.display_order - b.account.display_order);

@@ -46,7 +46,7 @@ export default async function DashboardPage() {
   const debtors = debtorsRes.data ?? [];
 
   const catTotals = categoryTotals(txns, categories);
-  const acctActivity = accountActivity(txns, accounts);
+  const acctActivity = accountActivity(txns, accounts, categories);
   const netWorth = acctActivity
     .filter((a) => a.account.include_in_net_worth)
     .reduce((s, a) => s + a.balance, 0);
