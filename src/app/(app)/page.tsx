@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { Landmark, PiggyBank, TrendingDown, TrendingUp, Users, Wallet } from "lucide-react";
+import { Landmark, PiggyBank, TrendingDown, Users, Wallet } from "lucide-react";
 import { requireUser } from "@/lib/queries";
 import {
   buildMonthlySummaries,
   monthlyBudget,
   monthlyBudgetStatus,
+  monthlyBalances,
   categoryTotals,
   accountActivity,
   realBalanceTrend,
@@ -13,13 +14,13 @@ import {
   sumOwed,
   signed,
 } from "@/lib/calc";
-import { fmtMoney, fmtDate, hueColor, monthKey } from "@/lib/format";
+import { fmtMoney, fmtDate, hueColor, monthKey, monthLabel } from "@/lib/format";
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
+import { IncomeCard, type IncomeSource } from "@/components/income-card";
 import { Money } from "@/components/money";
 import { CountUp } from "@/components/count-up";
 import { Reveal } from "@/components/reveal";
-import { ReconciliationFlow } from "@/components/reconciliation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TrendChart, BarSeriesChart } from "@/components/charts";
@@ -30,12 +31,13 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   const { supabase, user } = await requireUser();
 
-  const [settingsRes, txnsRes, accountsRes, categoriesRes, debtorsRes] = await Promise.all([
+  const [settingsRes, txnsRes, accountsRes, categoriesRes, debtorsRes, inflowRes] = await Promise.all([
     supabase.from("settings").select("*").eq("user_id", user.id).single(),
     supabase.from("transactions").select("*").eq("user_id", user.id).order("txn_date", { ascending: true }),
     supabase.from("accounts").select("*").eq("user_id", user.id).order("display_order"),
     supabase.from("categories").select("*").eq("user_id", user.id),
     supabase.from("debtors").select("*").eq("user_id", user.id),
+    supabase.from("inflow_types").select("*").eq("user_id", user.id),
   ]);
 
   // requireUser() guarantees a settings row, but stay defensive against a null.
@@ -44,6 +46,9 @@ export default async function DashboardPage() {
   const accounts = accountsRes.data ?? [];
   const categories = categoriesRes.data ?? [];
   const debtors = debtorsRes.data ?? [];
+  const inflowTypes = inflowRes.data ?? [];
+
+  const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
   const catTotals = categoryTotals(txns, categories);
   const acctActivity = accountActivity(txns, accounts, categories);
@@ -56,6 +61,33 @@ export default async function DashboardPage() {
   // income (incl. arrival capital) − spending − savings − net-fronted = net worth.
   const recon = reconcile(txns, netWorth);
   const totalWealth = netWorth + recon.savings; // spendable + what's set aside
+
+  // Income split by source (arrival + each paycheck/inflow type) for the modal.
+  // Sums to recon.income and grows automatically as new income lands.
+  const inflowName = new Map(inflowTypes.map((i) => [i.id, i.name]));
+  const incomeAgg = new Map<string, { total: number; count: number }>();
+  for (const t of txns) {
+    if (t.direction !== "inflow" || t.is_transfer) continue;
+    const label = isArrivalDeposit(t)
+      ? "Arrival capital"
+      : t.inflow_type_id
+        ? inflowName.get(t.inflow_type_id) ?? "Other"
+        : "Other";
+    const cur = incomeAgg.get(label) ?? { total: 0, count: 0 };
+    cur.total += t.amount;
+    cur.count += 1;
+    incomeAgg.set(label, cur);
+  }
+  const incomeSources: IncomeSource[] = [...incomeAgg.entries()]
+    .map(([label, v]) => ({ label, total: r2(v.total), count: v.count }))
+    .sort((a, b) => b.total - a.total);
+
+  // Opening/closing available-funds balance per month (newest first) — fills out
+  // the balance-over-time card and matches the Transactions ledger figures.
+  const nwIds = new Set(accounts.filter((a) => a.include_in_net_worth).map((a) => a.id));
+  const monthRows = [...monthlyBalances(txns, nwIds, netWorth).entries()]
+    .map(([m, b]) => ({ key: m, label: monthLabel(m), opening: b.opening, closing: b.closing }))
+    .sort((a, b) => (a.key < b.key ? 1 : -1));
 
   const summaries = buildMonthlySummaries(txns, {
     monthlyBudget: monthlyBudget(settings),
@@ -100,6 +132,8 @@ export default async function DashboardPage() {
   const donut = catTotals
     .filter((c) => c.total > 0)
     .map((c) => ({ name: c.name, value: c.total, color: hueColor(c.hue) }));
+  // Categorized spending — exactly the donut total, so the KPI and wheel agree.
+  const totalSpentCategorized = r2(donut.reduce((s, d) => s + d.value, 0));
 
   // Recent transactions
   const catById = new Map(categories.map((c) => [c.id, c]));
@@ -169,10 +203,7 @@ export default async function DashboardPage() {
                   <div className="mt-2 text-2xl font-semibold tracking-tight tnum sm:text-3xl">
                     {fmtMoney(totalWealth, { cents: true })}
                   </div>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    incl. <span className="font-medium text-foreground">{fmtMoney(recon.savings, { cents: true })}</span> in
-                    Marcus + RobinHood
-                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">Across every account, including savings</p>
                 </div>
               </div>
             </Card>
@@ -181,20 +212,13 @@ export default async function DashboardPage() {
           {/* KPI row */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Reveal delay={60} className="h-full">
-              <StatCard
-                label="Total income"
-                value={<CountUp value={recon.income} cents />}
-                hint="Arrival + Paychecks"
-                accent="positive"
-                icon={<TrendingUp />}
-                iconClassName="bg-positive"
-              />
+              <IncomeCard income={recon.income} sources={incomeSources} />
             </Reveal>
             <Reveal delay={120} className="h-full">
               <StatCard
                 label="Total spent"
-                value={<CountUp value={recon.spending} cents />}
-                hint="Incl. net settled"
+                value={<CountUp value={totalSpentCategorized} cents />}
+                hint={`Across ${donut.length} categories`}
                 icon={<TrendingDown />}
                 iconClassName="bg-negative"
               />
@@ -228,6 +252,31 @@ export default async function DashboardPage() {
                 </CardHeader>
                 <CardContent>
                   <TrendChart data={balanceSeries} series={[{ key: "balance", name: "Closing balance" }]} />
+                  {/* Monthly opening→closing available funds, newest first. */}
+                  <div className="mt-4 border-t border-border/60 pt-3">
+                    <div className="mb-1 flex items-center justify-between px-1 text-[0.7rem] font-medium uppercase tracking-wider text-muted-foreground">
+                      <span>Month</span>
+                      <span>Change · closing</span>
+                    </div>
+                    <div className="divide-y divide-border/50">
+                      {monthRows.map((r) => {
+                        const change = r2(r.closing - r.opening);
+                        return (
+                          <div key={r.key} className="flex items-center justify-between px-1 py-1.5 text-sm">
+                            <span className="text-muted-foreground">{r.label}</span>
+                            <span className="flex items-center gap-4 tnum">
+                              <span className={change >= 0 ? "text-positive" : "text-negative"}>
+                                {fmtMoney(change, { sign: true, cents: true })}
+                              </span>
+                              <span className="w-24 text-right font-medium">
+                                {fmtMoney(r.closing, { cents: true })}
+                              </span>
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
               <Card className="surface lg:col-span-2">
@@ -241,32 +290,22 @@ export default async function DashboardPage() {
             </div>
           </Reveal>
 
-          {/* Reconciliation + budget */}
+          {/* Monthly spending vs budget */}
           <Reveal delay={360}>
-            <div className="grid gap-4 lg:grid-cols-5">
-              <Card className="surface lg:col-span-2">
-                <CardHeader>
-                  <CardTitle>How your balance adds up</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ReconciliationFlow data={recon} />
-                </CardContent>
-              </Card>
-              <Card className="surface lg:col-span-3">
-                <CardHeader>
-                  <CardTitle>Monthly spending vs budget</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <BarSeriesChart
-                    data={budgetSeries}
-                    series={[
-                      { key: "Spent", name: "Spent", color: "var(--chart-1)" },
-                      { key: "Budget", name: "Budget", color: "var(--chart-5)" },
-                    ]}
-                  />
-                </CardContent>
-              </Card>
-            </div>
+            <Card className="surface">
+              <CardHeader>
+                <CardTitle>Monthly spending vs budget</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <BarSeriesChart
+                  data={budgetSeries}
+                  series={[
+                    { key: "Spent", name: "Spent", color: "var(--chart-1)" },
+                    { key: "Budget", name: "Budget", color: "var(--chart-3)" },
+                  ]}
+                />
+              </CardContent>
+            </Card>
           </Reveal>
 
           {/* Recent + accounts */}
