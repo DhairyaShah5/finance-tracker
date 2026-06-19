@@ -46,6 +46,7 @@ export interface DetailItem {
   id: string;
   month: string;
   date: string;
+  created_at: string;
   description: string;
   category: string | null;
   group: Group;
@@ -153,7 +154,10 @@ export function MonthlyBreakdown({
             {GROUPS.map((g) => {
               const items = monthItems
                 .filter((d) => d.group === g.key)
-                .sort((a, b) => b.amount - a.amount);
+                // Reverse chronological, matching the transactions ledger.
+                .sort((a, b) =>
+                  a.date < b.date ? 1 : a.date > b.date ? -1 : b.created_at.localeCompare(a.created_at),
+                );
               if (!items.length) return null;
               const subtotal = items.reduce((s, i) => s + i.amount, 0);
               return (

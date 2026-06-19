@@ -36,6 +36,7 @@ export default async function InsightsPage() {
         id: t.id,
         month: monthKey(t.txn_date),
         date: t.txn_date,
+        created_at: t.created_at,
         description: t.description,
         category: cat?.name ?? null,
         group: (t.budget_group ?? "unclassified") as Group,
@@ -70,11 +71,14 @@ export default async function InsightsPage() {
 
   const empty = months.length === 0;
 
-  function delta(actual: number, target: number) {
+  // higherIsBetter: for savings, beating the target is good (green); for needs/
+  // wants, going over the target is bad (red).
+  function delta(actual: number, target: number, higherIsBetter = false) {
     const pp = Math.round((actual - target) * 100);
     if (pp === 0) return <span className="text-muted-foreground">on target</span>;
+    const good = higherIsBetter ? pp > 0 : pp < 0;
     return (
-      <span className={pp > 0 ? "text-negative" : "text-positive"}>
+      <span className={good ? "text-positive" : "text-negative"}>
         {pp > 0 ? "+" : ""}
         {pp}pp vs {Math.round(target * 100)}%
       </span>
@@ -110,7 +114,7 @@ export default async function InsightsPage() {
             <StatCard
               label="Savings · target 20%"
               value={<span style={{ color: COLORS.savings }}>{fmtPct(pct(totals.savings), 0)}</span>}
-              hint={<>{fmtMoney(totals.savings)} · {delta(pct(totals.savings), TARGET.savings)}</>}
+              hint={<>{fmtMoney(totals.savings)} · {delta(pct(totals.savings), TARGET.savings, true)}</>}
             />
           </div>
 
