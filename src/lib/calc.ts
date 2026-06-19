@@ -44,9 +44,11 @@ export function isSavingsTxn(t: Pick<TransactionRow, "budget_group">): boolean {
  * Transfers and inflows → 0.
  */
 export function myAmount(
-  t: Pick<TransactionRow, "direction" | "amount" | "is_transfer" | "whose_expense" | "split_count">,
+  t: Pick<TransactionRow, "direction" | "amount" | "is_transfer" | "whose_expense" | "split_count" | "my_share">,
 ): number {
   if (t.direction !== "outflow" || t.is_transfer) return 0;
+  // Explicit override (you covered more/less than the even split).
+  if (t.my_share != null) return round2(Math.min(t.my_share, t.amount));
   if (t.whose_expense === "Friend") return 0;
   if (t.whose_expense === "Group" || t.whose_expense === "Roommates") {
     return t.split_count && t.split_count > 0 ? round2(t.amount / t.split_count) : 0;

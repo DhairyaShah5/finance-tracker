@@ -146,6 +146,7 @@ export interface Database {
           debtor_id: string | null;
           is_transfer: boolean;
           split_count: number | null;
+          my_share: number | null;
           budget_group: "needs" | "wants" | "savings" | null;
           notes: string | null;
         } & Timestamps & WithUpdated;
@@ -163,6 +164,7 @@ export interface Database {
           debtor_id?: string | null;
           is_transfer?: boolean;
           split_count?: number | null;
+          my_share?: number | null;
           budget_group?: "needs" | "wants" | "savings" | null;
           notes?: string | null;
           created_at?: string;
