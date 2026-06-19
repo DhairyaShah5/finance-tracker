@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Flag, Landmark, PiggyBank, TrendingDown, TrendingUp, Users, Wallet } from "lucide-react";
+import { Landmark, PiggyBank, TrendingDown, TrendingUp, Users, Wallet } from "lucide-react";
 import { requireUser } from "@/lib/queries";
 import {
   buildMonthlySummaries,
@@ -55,6 +55,7 @@ export default async function DashboardPage() {
   // Full reconciliation - every dollar in exactly one bucket:
   // income (incl. arrival capital) − spending − savings − net-fronted = net worth.
   const recon = reconcile(txns, netWorth);
+  const totalWealth = netWorth + recon.savings; // spendable + what's set aside
 
   const summaries = buildMonthlySummaries(txns, {
     monthlyBudget: monthlyBudget(settings),
@@ -138,45 +139,58 @@ export default async function DashboardPage() {
         </Card>
       ) : (
         <>
-          {/* KPI grid */}
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
-            <Reveal delay={0} className="h-full">
-              <StatCard
-                label="Starting balance"
-                value={<CountUp value={settings.starting_funds} cents />}
-                hint="Arrived with"
-                icon={<Flag />}
+          {/* Hero — available funds at a glance */}
+          <Reveal>
+            <Card className="surface sheen relative overflow-hidden py-0">
+              <div
+                className="pointer-events-none absolute -left-10 -top-20 size-72 rounded-full grad-brand opacity-20 blur-3xl"
+                aria-hidden
               />
-            </Reveal>
+              <div
+                className="relative flex flex-col gap-6 md:flex-row md:items-center md:justify-between"
+                style={{ padding: "1.75rem" }}
+              >
+                <div className="min-w-0">
+                  <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    <span className="flex size-7 items-center justify-center rounded-xl grad-brand text-white shadow-sm shadow-primary/30 [&_svg]:size-4">
+                      <Wallet />
+                    </span>
+                    Available funds
+                  </span>
+                  <div className="mt-3 text-4xl font-bold tracking-tight tnum grad-text sm:text-5xl">
+                    <CountUp value={netWorth} cents />
+                  </div>
+                  <p className="mt-2 text-sm text-muted-foreground">Spendable cash across your accounts</p>
+                </div>
+                <div className="shrink-0 md:border-l md:border-border/60 md:pl-8">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Total with savings
+                  </span>
+                  <div className="mt-2 text-2xl font-semibold tracking-tight tnum sm:text-3xl">
+                    {fmtMoney(totalWealth, { cents: true })}
+                  </div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    incl. <span className="font-medium text-foreground">{fmtMoney(recon.savings, { cents: true })}</span> in
+                    Marcus + RobinHood
+                  </p>
+                </div>
+              </div>
+            </Card>
+          </Reveal>
+
+          {/* KPI row */}
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Reveal delay={60} className="h-full">
               <StatCard
-                label="Available funds"
-                value={<CountUp value={netWorth} cents />}
-                hint={`${fmtMoney(netWorth - settings.starting_funds, { sign: true })} since arrival`}
-                icon={<Wallet />}
-              />
-            </Reveal>
-            <Reveal delay={120} className="h-full">
-              <StatCard
-                label="Saved"
-                value={<CountUp value={recon.savings} cents />}
-                hint="Investments + vault"
-                accent="positive"
-                icon={<PiggyBank />}
-                iconClassName="bg-positive"
-              />
-            </Reveal>
-            <Reveal delay={180} className="h-full">
-              <StatCard
                 label="Total income"
-                value={<CountUp value={recon.income - recon.arrivalCapital} cents />}
-                hint="Paychecks"
+                value={<CountUp value={recon.income} cents />}
+                hint="Arrival + Paychecks"
                 accent="positive"
                 icon={<TrendingUp />}
                 iconClassName="bg-positive"
               />
             </Reveal>
-            <Reveal delay={240} className="h-full">
+            <Reveal delay={120} className="h-full">
               <StatCard
                 label="Total spent"
                 value={<CountUp value={recon.spending} cents />}
@@ -185,7 +199,17 @@ export default async function DashboardPage() {
                 iconClassName="bg-negative"
               />
             </Reveal>
-            <Reveal delay={300} className="h-full">
+            <Reveal delay={180} className="h-full">
+              <StatCard
+                label="Saved"
+                value={<CountUp value={recon.savings} cents />}
+                hint="Marcus + RobinHood"
+                accent="positive"
+                icon={<PiggyBank />}
+                iconClassName="bg-positive"
+              />
+            </Reveal>
+            <Reveal delay={240} className="h-full">
               <StatCard
                 label="Owed to me"
                 value={<CountUp value={owed} cents />}
@@ -195,22 +219,8 @@ export default async function DashboardPage() {
             </Reveal>
           </div>
 
-          {/* The cash identity - how the current balance is reached, to the cent */}
-          <Reveal delay={340}>
-            <Card className="surface">
-              <CardHeader>
-                <CardTitle>How your balance adds up</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="max-w-xl">
-                  <ReconciliationFlow data={recon} />
-                </div>
-              </CardContent>
-            </Card>
-          </Reveal>
-
-          {/* Charts */}
-          <Reveal delay={400}>
+          {/* Balance trend + spending mix */}
+          <Reveal delay={300}>
             <div className="grid gap-4 lg:grid-cols-5">
               <Card className="surface lg:col-span-3">
                 <CardHeader>
@@ -231,90 +241,96 @@ export default async function DashboardPage() {
             </div>
           </Reveal>
 
-          <Reveal delay={460}>
-            <Card className="surface">
-              <CardHeader>
-                <CardTitle>Monthly spending vs budget</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <BarSeriesChart
-                  data={budgetSeries}
-                  series={[
-                    { key: "Spent", name: "Spent", color: "var(--chart-1)" },
-                    { key: "Budget", name: "Budget", color: "var(--chart-5)" },
-                  ]}
-                />
-              </CardContent>
-            </Card>
+          {/* Reconciliation + budget */}
+          <Reveal delay={360}>
+            <div className="grid gap-4 lg:grid-cols-5">
+              <Card className="surface lg:col-span-2">
+                <CardHeader>
+                  <CardTitle>How your balance adds up</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ReconciliationFlow data={recon} />
+                </CardContent>
+              </Card>
+              <Card className="surface lg:col-span-3">
+                <CardHeader>
+                  <CardTitle>Monthly spending vs budget</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <BarSeriesChart
+                    data={budgetSeries}
+                    series={[
+                      { key: "Spent", name: "Spent", color: "var(--chart-1)" },
+                      { key: "Budget", name: "Budget", color: "var(--chart-5)" },
+                    ]}
+                  />
+                </CardContent>
+              </Card>
+            </div>
           </Reveal>
 
           {/* Recent + accounts */}
-          <Reveal delay={520}>
+          <Reveal delay={420}>
             <div className="grid gap-4 lg:grid-cols-5">
               <Card className="surface lg:col-span-3">
-              <CardHeader className="flex-row items-center justify-between">
-                <CardTitle>Recent transactions</CardTitle>
-                <Link href="/transactions" className="text-sm text-primary underline-offset-2 hover:underline">
-                  View all
-                </Link>
-              </CardHeader>
-              <CardContent className="divide-y divide-border">
-                {recent.map((t) => {
-                  const cat = t.category_id ? catById.get(t.category_id) : undefined;
-                  const acct = acctById.get(t.account_id);
-                  return (
-                    <div key={t.id} className="flex items-center gap-3 py-2.5">
-                      <span
-                        className="size-2.5 shrink-0 rounded-full"
-                        style={{ background: cat ? hueColor(cat.color_hue) : "var(--muted-foreground)" }}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{t.description}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {fmtDate(t.txn_date, "short")} · {acct?.name ?? "-"}
-                          {cat ? ` · ${cat.name}` : ""}
-                        </p>
+                <CardHeader className="flex-row items-center justify-between">
+                  <CardTitle>Recent transactions</CardTitle>
+                  <Link href="/transactions" className="text-sm text-primary underline-offset-2 hover:underline">
+                    View all
+                  </Link>
+                </CardHeader>
+                <CardContent className="divide-y divide-border">
+                  {recent.map((t) => {
+                    const cat = t.category_id ? catById.get(t.category_id) : undefined;
+                    const acct = acctById.get(t.account_id);
+                    return (
+                      <div key={t.id} className="flex items-center gap-3 py-2.5">
+                        <span
+                          className="size-2.5 shrink-0 rounded-full"
+                          style={{ background: cat ? hueColor(cat.color_hue) : "var(--muted-foreground)" }}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium">{t.description}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {fmtDate(t.txn_date, "short")} · {acct?.name ?? "-"}
+                            {cat ? ` · ${cat.name}` : ""}
+                          </p>
+                        </div>
+                        <Money value={signed(t)} cents colored className="text-sm font-medium" />
                       </div>
-                      <Money
-                        value={signed(t)}
-                        cents
-                        colored
-                        className="text-sm font-medium"
-                      />
-                    </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
-            <Card className="surface lg:col-span-2">
-              <CardHeader className="flex-row items-center justify-between">
-                <CardTitle>Accounts</CardTitle>
-                <Link href="/accounts" className="text-sm text-primary underline-offset-2 hover:underline">
-                  View all
-                </Link>
-              </CardHeader>
-              <CardContent className="divide-y divide-border">
-                {acctActivity.map(({ account, balance: bal }) => (
-                  <div key={account.id} className="flex items-center justify-between py-2.5">
-                    <div className="flex items-center gap-2.5">
-                      <Landmark className="size-4 text-muted-foreground" />
-                      <div>
-                        <p className="text-sm font-medium">{account.name}</p>
-                        <p className="text-xs text-muted-foreground">{account.bank}</p>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+              <Card className="surface lg:col-span-2">
+                <CardHeader className="flex-row items-center justify-between">
+                  <CardTitle>Accounts</CardTitle>
+                  <Link href="/accounts" className="text-sm text-primary underline-offset-2 hover:underline">
+                    View all
+                  </Link>
+                </CardHeader>
+                <CardContent className="divide-y divide-border">
+                  {acctActivity.map(({ account, balance: bal }) => (
+                    <div key={account.id} className="flex items-center justify-between py-2.5">
+                      <div className="flex items-center gap-2.5">
+                        <Landmark className="size-4 text-muted-foreground" />
+                        <div>
+                          <p className="text-sm font-medium">{account.name}</p>
+                          <p className="text-xs text-muted-foreground">{account.bank}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <Money value={bal} cents colored={account.is_credit} className="text-sm font-medium" />
+                        {account.is_credit ? (
+                          <Badge variant="outline" className="ml-1 text-[10px]">
+                            credit
+                          </Badge>
+                        ) : null}
                       </div>
                     </div>
-                    <div className="text-right">
-                      <Money value={bal} cents colored={account.is_credit} className="text-sm font-medium" />
-                      {account.is_credit ? (
-                        <Badge variant="outline" className="ml-1 text-[10px]">
-                          credit
-                        </Badge>
-                      ) : null}
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
+                  ))}
+                </CardContent>
+              </Card>
             </div>
           </Reveal>
         </>
