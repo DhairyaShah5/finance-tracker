@@ -71,6 +71,7 @@ export function TransactionDialog({
   const [inflowTypeId, setInflowTypeId] = React.useState(NONE);
   const [whose, setWhose] = React.useState<string>("My");
   const [splitCount, setSplitCount] = React.useState("2");
+  const [myShare, setMyShare] = React.useState(""); // explicit "your share" override
   const [debtorId, setDebtorId] = React.useState(NONE);
   const [notes, setNotes] = React.useState("");
 
@@ -88,6 +89,7 @@ export function TransactionDialog({
       setInflowTypeId(existing.inflow_type_id ?? NONE);
       setWhose(existing.whose_expense ?? "My");
       setSplitCount(existing.split_count ? String(existing.split_count) : "2");
+      setMyShare(existing.my_share != null ? String(existing.my_share) : "");
       setDebtorId(existing.debtor_id ?? NONE);
       setNotes(existing.notes ?? "");
     } else {
@@ -102,6 +104,7 @@ export function TransactionDialog({
       setInflowTypeId(NONE);
       setWhose("My");
       setSplitCount("2");
+      setMyShare("");
       setDebtorId(NONE);
       setNotes("");
     }
@@ -122,6 +125,7 @@ export function TransactionDialog({
         mode === "expense" && (whose === "Group" || whose === "Roommates")
           ? Number(splitCount) || null
           : null,
+      my_share: mode === "expense" && myShare.trim() !== "" ? Number(myShare) : null,
       budget_group:
         mode === "expense" && budgetGroup !== NONE
           ? (budgetGroup as TransactionInput["budget_group"])
@@ -321,6 +325,24 @@ export function TransactionDialog({
                   </div>
                 </div>
               ) : null}
+
+              <div className="space-y-1.5">
+                <Label htmlFor="my_share">Your share (optional)</Label>
+                <Input
+                  id="my_share"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  inputMode="decimal"
+                  placeholder="Override how much counts as your spending"
+                  value={myShare}
+                  onChange={(e) => setMyShare(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Leave blank to use the even split above. Set this when you actually covered more
+                  (or less) than your share — it changes your spending, not the amount paid.
+                </p>
+              </div>
             </>
           ) : null}
 

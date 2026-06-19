@@ -128,17 +128,13 @@ export default async function DashboardPage() {
     Spent: s.totalSpent,
     Budget: s.totalBudget,
   }));
-  // Spending donut: every category expanded (no "Other" bucket) plus the net
-  // you've fronted for others that isn't tied to a category. Its total, the
-  // "Total spent" KPI, and the Transactions reconciliation all equal recon.spending.
-  const catSlices = catTotals
+  // Spending donut: every category expanded (no "Other" bucket). Its total, the
+  // "Total spent" KPI, and the Transactions reconciliation all equal recon.spending
+  // (informal friend-fronting is absorbed into each expense's share, so there's no
+  // separate residual slice).
+  const spendDonut = catTotals
     .filter((c) => c.total > 0)
     .map((c) => ({ name: c.name, value: c.total, color: hueColor(c.hue) }));
-  const sharedSpend = r2(recon.spending - catSlices.reduce((s, d) => s + d.value, 0));
-  const spendDonut =
-    sharedSpend > 0
-      ? [...catSlices, { name: "Shared / fronted", value: sharedSpend, color: "var(--muted-foreground)" }]
-      : catSlices;
 
   // Recent transactions
   const catById = new Map(categories.map((c) => [c.id, c]));
@@ -223,7 +219,7 @@ export default async function DashboardPage() {
               <StatCard
                 label="Total spent"
                 value={<CountUp value={recon.spending} cents />}
-                hint={`${catSlices.length} categories${sharedSpend > 0 ? " + shared" : ""}`}
+                hint={`${spendDonut.length} categories`}
                 icon={<TrendingDown />}
                 iconClassName="bg-negative"
               />

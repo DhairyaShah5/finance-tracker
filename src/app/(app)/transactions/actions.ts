@@ -16,6 +16,7 @@ const schema = z.object({
   debtor_id: z.string().uuid().nullable().optional(),
   is_transfer: z.boolean().optional(),
   split_count: z.coerce.number().int().positive().nullable().optional(),
+  my_share: z.coerce.number().min(0, "Share can't be negative.").nullable().optional(),
   budget_group: z.enum(["needs", "wants", "savings"]).nullable().optional(),
   notes: z.string().trim().nullable().optional(),
 });
@@ -45,6 +46,8 @@ function normalize(data: z.output<typeof schema>) {
         : null,
     debtor_id: isTransfer ? null : data.debtor_id || null,
     is_transfer: isTransfer,
+    // Explicit "your share" override; only meaningful on real outflows.
+    my_share: !isTransfer && data.direction === "outflow" ? data.my_share ?? null : null,
     // needs / wants / savings is per-transaction, only on real outflows.
     budget_group: !isTransfer && data.direction === "outflow" ? data.budget_group ?? null : null,
     notes: data.notes || null,
