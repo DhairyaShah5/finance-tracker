@@ -145,6 +145,41 @@ export function realBalanceTrend(txns: TransactionRow[], netWorth: number): Bala
   return out;
 }
 
+export interface MonthBalance {
+  opening: number;
+  closing: number;
+}
+
+/**
+ * Opening and closing available-funds (net worth) balance for each month with
+ * activity, anchored so the latest month's closing equals current net worth.
+ * Only flows on net-worth accounts move the balance - depositing into an excluded
+ * savings/investment stash correctly lowers it (the money left a spendable
+ * account), and a month's opening is just the prior month's closing.
+ */
+export function monthlyBalances(
+  txns: Pick<TransactionRow, "txn_date" | "account_id" | "direction" | "amount">[],
+  netWorthAccountIds: Set<string>,
+  netWorth: number,
+): Map<string, MonthBalance> {
+  const change = new Map<string, number>();
+  for (const t of txns) {
+    if (!netWorthAccountIds.has(t.account_id)) continue;
+    const k = monthKey(t.txn_date);
+    change.set(k, round2((change.get(k) ?? 0) + signed(t)));
+  }
+  const total = round2([...change.values()].reduce((s, c) => s + c, 0));
+  let running = round2(netWorth - total); // net worth before the first tracked month
+  const out = new Map<string, MonthBalance>();
+  for (const k of [...change.keys()].sort()) {
+    const opening = running;
+    const closing = round2(opening + (change.get(k) ?? 0));
+    out.set(k, { opening, closing });
+    running = closing;
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Category breakdown (Excel R10 - SUMIF outflow by category)
 // ---------------------------------------------------------------------------

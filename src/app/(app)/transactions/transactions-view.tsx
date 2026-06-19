@@ -38,7 +38,7 @@ import { Money } from "@/components/money";
 import { Reveal } from "@/components/reveal";
 import { ReconciliationFlow } from "@/components/reconciliation";
 import { fmtDate, fmtMoney, hueColor, monthLabel, monthKey } from "@/lib/format";
-import { myAmount, isSavingsTxn, reconcile, signed } from "@/lib/calc";
+import { myAmount, isSavingsTxn, reconcile, signed, monthlyBalances } from "@/lib/calc";
 import { cn } from "@/lib/utils";
 import type { TransactionRow } from "@/lib/database.types";
 import { TransactionDialog, type TxnLookups } from "./transaction-dialog";
@@ -127,6 +127,13 @@ export function TransactionsView({
   const totalOut = real.filter((t) => !isSavingsTxn(t)).reduce((s, t) => s + myAmount(t), 0);
   // Full-ledger reconciliation (independent of the active filter).
   const recon = reconcile(transactions, netWorth);
+
+  // Opening/closing available-funds balance per month, from the WHOLE ledger
+  // (not the filtered view) so the chain stays correct regardless of filters.
+  const balances = React.useMemo(() => {
+    const nwIds = new Set(lookups.accounts.filter((a) => a.include_in_net_worth).map((a) => a.id));
+    return monthlyBalances(transactions, nwIds, netWorth);
+  }, [transactions, lookups.accounts, netWorth]);
 
   function toggle(key: string) {
     setExpanded((prev) => {
@@ -351,6 +358,7 @@ export function TransactionsView({
         <div className="space-y-3">
           {groups.map((g, i) => {
             const open = isOpen(g.key);
+            const bal = balances.get(g.key);
             return (
               <Reveal key={g.key} delay={Math.min(i * 40, 240)}>
                 <div className="overflow-hidden rounded-2xl border border-border bg-card/80 backdrop-blur-sm surface">
@@ -378,6 +386,13 @@ export function TransactionsView({
                       <div className="text-xs text-muted-foreground">
                         {g.txns.length} transaction{g.txns.length === 1 ? "" : "s"}
                       </div>
+                      {bal ? (
+                        <div className="mt-0.5 text-xs text-muted-foreground tnum">
+                          Balance {fmtMoney(bal.opening, { cents: true })}
+                          <span className="px-1 opacity-40">→</span>
+                          {fmtMoney(bal.closing, { cents: true })}
+                        </div>
+                      ) : null}
                     </div>
                     <div className="hidden text-right text-xs text-muted-foreground tnum sm:block">
                       <span className="text-positive">{fmtMoney(g.inflow, { cents: true })}</span> in
