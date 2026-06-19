@@ -128,12 +128,17 @@ export default async function DashboardPage() {
     Spent: s.totalSpent,
     Budget: s.totalBudget,
   }));
-  // Show every category individually (no "Other" bucket).
-  const donut = catTotals
+  // Spending donut: every category expanded (no "Other" bucket) plus the net
+  // you've fronted for others that isn't tied to a category. Its total, the
+  // "Total spent" KPI, and the Transactions reconciliation all equal recon.spending.
+  const catSlices = catTotals
     .filter((c) => c.total > 0)
     .map((c) => ({ name: c.name, value: c.total, color: hueColor(c.hue) }));
-  // Categorized spending — exactly the donut total, so the KPI and wheel agree.
-  const totalSpentCategorized = r2(donut.reduce((s, d) => s + d.value, 0));
+  const sharedSpend = r2(recon.spending - catSlices.reduce((s, d) => s + d.value, 0));
+  const spendDonut =
+    sharedSpend > 0
+      ? [...catSlices, { name: "Shared / fronted", value: sharedSpend, color: "var(--muted-foreground)" }]
+      : catSlices;
 
   // Recent transactions
   const catById = new Map(categories.map((c) => [c.id, c]));
@@ -217,8 +222,8 @@ export default async function DashboardPage() {
             <Reveal delay={120} className="h-full">
               <StatCard
                 label="Total spent"
-                value={<CountUp value={totalSpentCategorized} cents />}
-                hint={`Across ${donut.length} categories`}
+                value={<CountUp value={recon.spending} cents />}
+                hint={`${catSlices.length} categories${sharedSpend > 0 ? " + shared" : ""}`}
                 icon={<TrendingDown />}
                 iconClassName="bg-negative"
               />
@@ -284,7 +289,13 @@ export default async function DashboardPage() {
                   <CardTitle>Spending by category</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <DonutBreakdown data={donut} height={230} centerLabel="Spent" emptyText="No spending to chart." />
+                  <DonutBreakdown
+                    data={spendDonut}
+                    height={230}
+                    maxItems={spendDonut.length}
+                    centerLabel="Spent"
+                    emptyText="No spending to chart."
+                  />
                 </CardContent>
               </Card>
             </div>
