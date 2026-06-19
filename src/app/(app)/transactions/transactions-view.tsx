@@ -84,9 +84,7 @@ export function TransactionsView({
       .filter((t) => {
         if (q && !t.description.toLowerCase().includes(q)) return false;
         if (account !== "all" && t.account_id !== account) return false;
-        if (category !== "all") {
-          if (category === "none" ? t.category_id !== null : t.category_id !== category) return false;
-        }
+        if (category !== "all" && t.category_id !== category) return false;
         if (direction !== "all") {
           if (direction === "transfer") {
             if (!t.is_transfer) return false;
@@ -332,7 +330,6 @@ export function TransactionsView({
           <SelectTrigger className="w-40 border-transparent bg-background/60"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All categories</SelectItem>
-            <SelectItem value="none">Uncategorized</SelectItem>
             {lookups.categories.map((c) => (
               <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
             ))}

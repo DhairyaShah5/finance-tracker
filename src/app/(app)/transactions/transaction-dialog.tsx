@@ -112,6 +112,11 @@ export function TransactionDialog({
 
   function submit() {
     const direction = mode === "transfer" ? transferDir : mode === "income" ? "inflow" : "outflow";
+    // Every expense must be categorized — there is no "Uncategorized" bucket.
+    if (mode === "expense" && categoryId === NONE) {
+      toast.error("Pick a category for this expense.");
+      return;
+    }
     const input: TransactionInput = {
       txn_date: date,
       account_id: accountId,
@@ -219,9 +224,8 @@ export function TransactionDialog({
               <div className="space-y-1.5">
                 <Label>Category</Label>
                 <Select value={categoryId} onValueChange={setCategoryId}>
-                  <SelectTrigger><SelectValue placeholder="Category" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Pick a category" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={NONE}>Uncategorized</SelectItem>
                     {lookups.categories.map((c) => (
                       <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                     ))}
