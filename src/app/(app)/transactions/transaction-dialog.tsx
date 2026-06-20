@@ -155,7 +155,7 @@ export function TransactionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md max-h-[90dvh] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden">
         <DialogHeader>
           <DialogTitle>{existing ? "Edit transaction" : "Add transaction"}</DialogTitle>
           <DialogDescription>
@@ -165,7 +165,7 @@ export function TransactionDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-4 overflow-y-auto min-h-0 -mr-2 pr-2">
           <Tabs value={mode} onValueChange={(v) => setMode(v as Mode)}>
             <TabsList className="w-full">
               <TabsTrigger value="expense" className="flex-1">Expense</TabsTrigger>
