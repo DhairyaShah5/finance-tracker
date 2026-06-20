@@ -43,7 +43,7 @@ export default async function BudgetPage() {
     <div className="space-y-6">
       <PageHeader
         title="Budget"
-        description="What you can afford each month — recent income minus your savings target. Browse any month."
+        description="What you can afford each month: recent income minus your savings target. Browse any month."
       />
       <BudgetView statuses={statuses} currentMonth={currentMonth} daysLeft={daysLeft} savingsTarget={savingsTarget} />
     </div>

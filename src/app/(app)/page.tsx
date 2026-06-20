@@ -82,7 +82,7 @@ export default async function DashboardPage() {
     .map(([label, v]) => ({ label, total: r2(v.total), count: v.count }))
     .sort((a, b) => b.total - a.total);
 
-  // Opening/closing available-funds balance per month (newest first) — fills out
+  // Opening/closing available-funds balance per month (newest first) - fills out
   // the balance-over-time card and matches the Transactions ledger figures.
   const nwIds = new Set(accounts.filter((a) => a.include_in_net_worth).map((a) => a.id));
   const monthRows = [...monthlyBalances(txns, nwIds, netWorth).entries()]
@@ -174,7 +174,7 @@ export default async function DashboardPage() {
         </Card>
       ) : (
         <>
-          {/* Hero — available funds at a glance */}
+          {/* Hero - available funds at a glance */}
           <Reveal>
             <Card className="surface sheen relative overflow-hidden py-0">
               <div

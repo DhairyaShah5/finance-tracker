@@ -128,7 +128,7 @@ export type TransferInput = z.input<typeof transferSchema>;
  * Log a transfer between two accounts: an outflow on `from` and an inflow on
  * `to`. Both legs update balances but never count as income or spending.
  *
- * Special case — moving money INTO an account that's excluded from net worth
+ * Special case - moving money INTO an account that's excluded from net worth
  * (a savings/investment stash like Marcus HYSA or RobinHood): that's saving,
  * not a neutral shuffle. Because the destination sits outside net worth, a plain
  * transfer would drop net worth without anything to balance it (it'd leak into

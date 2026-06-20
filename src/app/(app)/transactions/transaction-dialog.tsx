@@ -112,7 +112,7 @@ export function TransactionDialog({
 
   function submit() {
     const direction = mode === "transfer" ? transferDir : mode === "income" ? "inflow" : "outflow";
-    // Every expense must be categorized — there is no "Uncategorized" bucket.
+    // Every expense must be categorized; there is no "Uncategorized" bucket.
     if (mode === "expense" && categoryId === NONE) {
       toast.error("Pick a category for this expense.");
       return;
@@ -344,7 +344,7 @@ export function TransactionDialog({
                 />
                 <p className="text-xs text-muted-foreground">
                   Leave blank to use the even split above. Set this when you actually covered more
-                  (or less) than your share — it changes your spending, not the amount paid.
+                  (or less) than your share. It changes your spending, not the amount paid.
                 </p>
               </div>
             </>

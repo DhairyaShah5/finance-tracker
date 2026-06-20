@@ -39,7 +39,7 @@ export function IncomeCard({ income, sources }: { income: number; sources: Incom
           <DialogHeader>
             <DialogTitle>Income breakdown</DialogTitle>
             <DialogDescription>
-              Every dollar in, by source — updates automatically as new paychecks land.
+              Every dollar in, by source. Updates automatically as new paychecks land.
             </DialogDescription>
           </DialogHeader>
 
