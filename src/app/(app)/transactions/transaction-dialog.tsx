@@ -155,8 +155,11 @@ export function TransactionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md max-h-[90dvh] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden">
-        <DialogHeader>
+      <DialogContent
+        className="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-md"
+        style={{ maxHeight: "90dvh" }}
+      >
+        <DialogHeader className="shrink-0">
           <DialogTitle>{existing ? "Edit transaction" : "Add transaction"}</DialogTitle>
           <DialogDescription>
             {mode === "transfer"
@@ -165,7 +168,7 @@ export function TransactionDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 overflow-y-auto min-h-0 -mr-2 pr-2">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto -mr-2 pr-2">
           <Tabs value={mode} onValueChange={(v) => setMode(v as Mode)}>
             <TabsList className="w-full">
               <TabsTrigger value="expense" className="flex-1">Expense</TabsTrigger>
@@ -356,7 +359,7 @@ export function TransactionDialog({
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="shrink-0">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
             Cancel
           </Button>
