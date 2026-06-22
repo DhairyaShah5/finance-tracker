@@ -8,12 +8,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { useReadOnly } from "@/components/read-only-context";
 import { fmtMoney } from "@/lib/format";
 import type { SettingsRow } from "@/lib/database.types";
 import { updateSettings, type SettingsInput } from "./actions";
 
 export function SettingsForm({ settings }: { settings: SettingsRow }) {
   const router = useRouter();
+  const readOnly = useReadOnly();
   const [pending, start] = React.useTransition();
 
   const [currency, setCurrency] = React.useState(settings.currency);
@@ -27,6 +29,10 @@ export function SettingsForm({ settings }: { settings: SettingsRow }) {
     Number.isFinite(funds) && Number.isFinite(months) && months > 0 ? funds / months : 0;
 
   function submit() {
+    if (readOnly) {
+      toast.info("View only - sign in to make changes.");
+      return;
+    }
     const input: SettingsInput = {
       currency: currency.trim(),
       starting_funds: startingFunds,
@@ -73,7 +79,7 @@ export function SettingsForm({ settings }: { settings: SettingsRow }) {
           </div>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <fieldset disabled={readOnly} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="space-y-1.5">
             <Label htmlFor="currency">Currency</Label>
             <Input
@@ -122,10 +128,10 @@ export function SettingsForm({ settings }: { settings: SettingsRow }) {
               placeholder="0.00"
             />
           </div>
-        </div>
+        </fieldset>
       </CardContent>
       <CardFooter className="justify-end border-t pt-6">
-        <Button onClick={submit} disabled={pending}>
+        <Button onClick={submit} disabled={pending || readOnly}>
           {pending ? "Saving…" : "Save settings"}
         </Button>
       </CardFooter>

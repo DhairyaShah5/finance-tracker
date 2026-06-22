@@ -14,6 +14,7 @@ import {
   Target,
   Menu,
   LogOut,
+  LogIn,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
@@ -97,21 +98,34 @@ function SignOutButton() {
   );
 }
 
-function SidebarFooter({ email }: { email: string }) {
+function SidebarFooter({ email, readOnly }: { email: string; readOnly?: boolean }) {
   return (
     <div className="mt-auto flex flex-col gap-1 border-t border-border p-2">
       <div className="flex items-center justify-between px-2 py-1">
-        <span className="truncate text-xs text-muted-foreground" title={email}>
-          {email}
+        <span className="truncate text-xs text-muted-foreground" title={readOnly ? "View only" : email}>
+          {readOnly ? "View only" : email}
         </span>
         <ThemeToggle />
       </div>
-      <SignOutButton />
+      {readOnly ? (
+        <Button
+          asChild
+          variant="ghost"
+          className="w-full justify-start gap-3 px-3 text-muted-foreground hover:text-foreground"
+        >
+          <Link href="/login">
+            <LogIn className="size-4" />
+            Sign in to edit
+          </Link>
+        </Button>
+      ) : (
+        <SignOutButton />
+      )}
     </div>
   );
 }
 
-export function AppSidebar({ email }: { email: string }) {
+export function AppSidebar({ email, readOnly }: { email: string; readOnly?: boolean }) {
   const [open, setOpen] = React.useState(false);
 
   return (
@@ -120,7 +134,7 @@ export function AppSidebar({ email }: { email: string }) {
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col gap-5 border-r border-border bg-sidebar/70 py-5 backdrop-blur-xl lg:flex">
         <Brand />
         <NavLinks />
-        <SidebarFooter email={email} />
+        <SidebarFooter email={email} readOnly={readOnly} />
       </aside>
 
       {/* Mobile top bar */}
@@ -137,7 +151,7 @@ export function AppSidebar({ email }: { email: string }) {
             <SheetContent side="left" className="w-64 gap-4 py-4">
               <SheetTitle className="px-4">Menu</SheetTitle>
               <NavLinks onNavigate={() => setOpen(false)} />
-              <SidebarFooter email={email} />
+              <SidebarFooter email={email} readOnly={readOnly} />
             </SheetContent>
           </Sheet>
         </div>

@@ -44,7 +44,10 @@ import { fmtDate, fmtInr, fmtNumber } from "@/lib/format";
 import { fxSummary } from "@/lib/calc";
 import type { IndiaTransferRow } from "@/lib/database.types";
 import { TransferDialog } from "./transfer-dialog";
+import { useReadOnly } from "@/components/read-only-context";
 import { deleteTransfer } from "./actions";
+
+const VIEW_ONLY = "View only - sign in to make changes.";
 
 const tooltipStyle = {
   background: "var(--popover)",
@@ -127,15 +130,20 @@ export function IndiaView({ transfers }: { transfers: IndiaTransferRow[] }) {
       );
   }, [transfers, direction]);
 
+  const readOnly = useReadOnly();
+
   function onAdd() {
+    if (readOnly) return void toast.info(VIEW_ONLY);
     setEditing(null);
     setDialogOpen(true);
   }
   function onEdit(t: IndiaTransferRow) {
+    if (readOnly) return void toast.info(VIEW_ONLY);
     setEditing(t);
     setDialogOpen(true);
   }
   function onDelete(t: IndiaTransferRow) {
+    if (readOnly) return void toast.info(VIEW_ONLY);
     if (!window.confirm(`Delete "${t.description}"?`)) return;
     deleteTransfer(t.id).then((res) => {
       if (!res.ok) toast.error(res.error ?? "Failed to delete.");

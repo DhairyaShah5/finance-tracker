@@ -16,8 +16,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useReadOnly } from "@/components/read-only-context";
 import { fmtMoney, hueColor } from "@/lib/format";
 import type { CategoryRow, InflowTypeRow } from "@/lib/database.types";
+
+const VIEW_ONLY = "View only - sign in to make changes.";
 import {
   createCategory,
   createInflowType,
@@ -42,6 +45,7 @@ function Swatch({ hue }: { hue: number | null }) {
 // ---------------------------------------------------------------------------
 function CategoriesSection({ categories }: { categories: CategoryRow[] }) {
   const router = useRouter();
+  const readOnly = useReadOnly();
   const [pending, start] = React.useTransition();
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [editName, setEditName] = React.useState("");
@@ -54,6 +58,7 @@ function CategoriesSection({ categories }: { categories: CategoryRow[] }) {
   const toBudget = (v: string) => (v.trim() === "" ? null : Number(v));
 
   function beginEdit(c: CategoryRow) {
+    if (readOnly) return void toast.info(VIEW_ONLY);
     setEditingId(c.id);
     setEditName(c.name);
     setEditHue(String(c.color_hue ?? 250));
@@ -75,6 +80,7 @@ function CategoriesSection({ categories }: { categories: CategoryRow[] }) {
     });
   }
   function remove(c: CategoryRow) {
+    if (readOnly) return void toast.info(VIEW_ONLY);
     if (!window.confirm(`Delete "${c.name}"? Transactions keep their history but become uncategorized.`)) return;
     start(async () => {
       const res = await deleteCategory(c.id);
@@ -87,6 +93,7 @@ function CategoriesSection({ categories }: { categories: CategoryRow[] }) {
     });
   }
   function add() {
+    if (readOnly) return void toast.info(VIEW_ONLY);
     if (!newName.trim()) {
       toast.error("Enter a category name.");
       return;
@@ -153,10 +160,10 @@ function CategoriesSection({ categories }: { categories: CategoryRow[] }) {
                     placeholder="auto"
                     aria-label="Monthly budget"
                   />
-                  <Button size="icon" className="size-8" onClick={() => saveEdit(c.id)} disabled={pending}>
+                  <Button size="icon" className="size-8" onClick={() => saveEdit(c.id)} disabled={pending || readOnly}>
                     <Check className="size-4" />
                   </Button>
-                  <Button size="icon" variant="ghost" className="size-8" onClick={cancelEdit} disabled={pending}>
+                  <Button size="icon" variant="ghost" className="size-8" onClick={cancelEdit} disabled={pending || readOnly}>
                     <X className="size-4" />
                   </Button>
                 </div>
@@ -169,7 +176,7 @@ function CategoriesSection({ categories }: { categories: CategoryRow[] }) {
                       {fmtMoney(c.monthly_budget)}/mo
                     </span>
                   ) : null}
-                  <Button size="icon" variant="ghost" className="size-8" onClick={() => beginEdit(c)} disabled={pending}>
+                  <Button size="icon" variant="ghost" className="size-8" onClick={() => beginEdit(c)} disabled={pending || readOnly}>
                     <Pencil className="size-4" />
                   </Button>
                   <Button
@@ -177,7 +184,7 @@ function CategoriesSection({ categories }: { categories: CategoryRow[] }) {
                     variant="ghost"
                     className="size-8 text-muted-foreground hover:text-destructive"
                     onClick={() => remove(c)}
-                    disabled={pending}
+                    disabled={pending || readOnly}
                   >
                     <Trash2 className="size-4" />
                   </Button>
@@ -225,7 +232,7 @@ function CategoriesSection({ categories }: { categories: CategoryRow[] }) {
               placeholder="auto"
             />
           </div>
-          <Button onClick={add} disabled={pending} className="gap-1.5">
+          <Button onClick={add} disabled={pending || readOnly} className="gap-1.5">
             <Plus className="size-4" /> Add
           </Button>
         </div>
@@ -239,6 +246,7 @@ function CategoriesSection({ categories }: { categories: CategoryRow[] }) {
 // ---------------------------------------------------------------------------
 function InflowTypesSection({ inflowTypes }: { inflowTypes: InflowTypeRow[] }) {
   const router = useRouter();
+  const readOnly = useReadOnly();
   const [pending, start] = React.useTransition();
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [editName, setEditName] = React.useState("");
@@ -247,6 +255,7 @@ function InflowTypesSection({ inflowTypes }: { inflowTypes: InflowTypeRow[] }) {
   const [newPaycheck, setNewPaycheck] = React.useState(false);
 
   function beginEdit(i: InflowTypeRow) {
+    if (readOnly) return void toast.info(VIEW_ONLY);
     setEditingId(i.id);
     setEditName(i.name);
     setEditPaycheck(i.is_paycheck);
@@ -267,6 +276,7 @@ function InflowTypesSection({ inflowTypes }: { inflowTypes: InflowTypeRow[] }) {
     });
   }
   function remove(i: InflowTypeRow) {
+    if (readOnly) return void toast.info(VIEW_ONLY);
     if (!window.confirm(`Delete "${i.name}"? Existing income keeps its history but loses this type.`)) return;
     start(async () => {
       const res = await deleteInflowType(i.id);
@@ -279,6 +289,7 @@ function InflowTypesSection({ inflowTypes }: { inflowTypes: InflowTypeRow[] }) {
     });
   }
   function add() {
+    if (readOnly) return void toast.info(VIEW_ONLY);
     if (!newName.trim()) {
       toast.error("Enter an income type name.");
       return;
@@ -324,10 +335,10 @@ function InflowTypesSection({ inflowTypes }: { inflowTypes: InflowTypeRow[] }) {
                     <Switch checked={editPaycheck} onCheckedChange={setEditPaycheck} />
                     Paycheck
                   </label>
-                  <Button size="icon" className="size-8" onClick={() => saveEdit(i.id)} disabled={pending}>
+                  <Button size="icon" className="size-8" onClick={() => saveEdit(i.id)} disabled={pending || readOnly}>
                     <Check className="size-4" />
                   </Button>
-                  <Button size="icon" variant="ghost" className="size-8" onClick={cancelEdit} disabled={pending}>
+                  <Button size="icon" variant="ghost" className="size-8" onClick={cancelEdit} disabled={pending || readOnly}>
                     <X className="size-4" />
                   </Button>
                 </div>
@@ -339,7 +350,7 @@ function InflowTypesSection({ inflowTypes }: { inflowTypes: InflowTypeRow[] }) {
                       Paycheck
                     </Badge>
                   ) : null}
-                  <Button size="icon" variant="ghost" className="size-8" onClick={() => beginEdit(i)} disabled={pending}>
+                  <Button size="icon" variant="ghost" className="size-8" onClick={() => beginEdit(i)} disabled={pending || readOnly}>
                     <Pencil className="size-4" />
                   </Button>
                   <Button
@@ -347,7 +358,7 @@ function InflowTypesSection({ inflowTypes }: { inflowTypes: InflowTypeRow[] }) {
                     variant="ghost"
                     className="size-8 text-muted-foreground hover:text-destructive"
                     onClick={() => remove(i)}
-                    disabled={pending}
+                    disabled={pending || readOnly}
                   >
                     <Trash2 className="size-4" />
                   </Button>
@@ -372,7 +383,7 @@ function InflowTypesSection({ inflowTypes }: { inflowTypes: InflowTypeRow[] }) {
             <Switch checked={newPaycheck} onCheckedChange={setNewPaycheck} />
             Paycheck
           </label>
-          <Button onClick={add} disabled={pending} className="gap-1.5">
+          <Button onClick={add} disabled={pending || readOnly} className="gap-1.5">
             <Plus className="size-4" /> Add
           </Button>
         </div>

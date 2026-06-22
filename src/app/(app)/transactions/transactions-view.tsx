@@ -41,8 +41,11 @@ import { fmtDate, fmtMoney, hueColor, monthLabel, monthKey, todayISO } from "@/l
 import { myAmount, isSavingsTxn, reconcile, signed, monthlyBalances } from "@/lib/calc";
 import { cn } from "@/lib/utils";
 import type { TransactionRow } from "@/lib/database.types";
+import { useReadOnly } from "@/components/read-only-context";
 import { TransactionDialog, type TxnLookups } from "./transaction-dialog";
 import { deleteTransaction, setTransactionTransfer } from "./actions";
+
+const VIEW_ONLY = "View only - sign in to make changes.";
 
 const CURRENT_MONTH = todayISO().slice(0, 7);
 
@@ -144,15 +147,20 @@ export function TransactionsView({
   // When filters are active, expand every matching month so results are visible.
   const isOpen = (key: string) => filterActive || expanded.has(key);
 
+  const readOnly = useReadOnly();
+
   function onAdd() {
+    if (readOnly) return void toast.info(VIEW_ONLY);
     setEditing(null);
     setDialogOpen(true);
   }
   function onEdit(t: TransactionRow) {
+    if (readOnly) return void toast.info(VIEW_ONLY);
     setEditing(t);
     setDialogOpen(true);
   }
   function onDelete(t: TransactionRow) {
+    if (readOnly) return void toast.info(VIEW_ONLY);
     if (!window.confirm(`Delete "${t.description}"?`)) return;
     deleteTransaction(t.id).then((res) => {
       if (!res.ok) toast.error(res.error ?? "Failed to delete.");
@@ -163,6 +171,7 @@ export function TransactionsView({
     });
   }
   function onToggleTransfer(t: TransactionRow) {
+    if (readOnly) return void toast.info(VIEW_ONLY);
     setTransactionTransfer(t.id, !t.is_transfer).then((res) => {
       if (!res.ok) toast.error(res.error ?? "Failed to update.");
       else {

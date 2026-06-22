@@ -25,9 +25,12 @@ import { StatCard } from "@/components/stat-card";
 import { Money } from "@/components/money";
 import { sumOwed } from "@/lib/calc";
 import type { AccountRow, DebtorRow } from "@/lib/database.types";
+import { useReadOnly } from "@/components/read-only-context";
 import { DebtorDialog } from "./debtor-dialog";
 import { SettleDialog } from "./settle-dialog";
 import { deleteDebtor } from "./actions";
+
+const VIEW_ONLY = "View only - sign in to make changes.";
 
 export function DebtorsView({
   debtors,
@@ -43,20 +46,25 @@ export function DebtorsView({
   const [settling, setSettling] = React.useState<DebtorRow | null>(null);
 
   const owed = sumOwed(debtors);
+  const readOnly = useReadOnly();
 
   function onAdd() {
+    if (readOnly) return void toast.info(VIEW_ONLY);
     setEditing(null);
     setDialogOpen(true);
   }
   function onEdit(d: DebtorRow) {
+    if (readOnly) return void toast.info(VIEW_ONLY);
     setEditing(d);
     setDialogOpen(true);
   }
   function onSettle(d: DebtorRow) {
+    if (readOnly) return void toast.info(VIEW_ONLY);
     setSettling(d);
     setSettleOpen(true);
   }
   function onDelete(d: DebtorRow) {
+    if (readOnly) return void toast.info(VIEW_ONLY);
     if (!window.confirm(`Delete "${d.name}"?`)) return;
     deleteDebtor(d.id).then((res) => {
       if (!res.ok) toast.error(res.error ?? "Failed to delete.");

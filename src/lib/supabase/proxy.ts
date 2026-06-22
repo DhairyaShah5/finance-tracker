@@ -2,11 +2,11 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/lib/database.types";
 
-const PUBLIC_PATHS = ["/login", "/auth"];
-
 /**
- * Refreshes the Supabase auth session on every request and gates the app:
- * unauthenticated users are redirected to /login (except public paths).
+ * Refreshes the Supabase auth session on every request. The app is publicly
+ * viewable in read-only mode, so there's no auth wall here: signed-in owners get
+ * a fresh session (and full edit access); everyone else browses read-only. Write
+ * access is enforced in the server actions, which require a real session.
  */
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -32,20 +32,8 @@ export async function updateSession(request: NextRequest) {
     },
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const path = request.nextUrl.pathname;
-  const isPublic = PUBLIC_PATHS.some(
-    (p) => path === p || path.startsWith(p + "/"),
-  );
-
-  if (!user && !isPublic) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    return NextResponse.redirect(url);
-  }
+  // Touch the session so the owner's auth cookies get refreshed on the response.
+  await supabase.auth.getUser();
 
   return response;
 }

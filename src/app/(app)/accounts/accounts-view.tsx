@@ -36,9 +36,12 @@ import { Money } from "@/components/money";
 import { DonutBreakdown } from "@/components/donut-breakdown";
 import { hueColor } from "@/lib/format";
 import type { AccountActivity } from "@/lib/calc";
+import { useReadOnly } from "@/components/read-only-context";
 import { AccountDialog } from "./account-dialog";
 import { TransferDialog, type TransferPreset } from "./transfer-dialog";
 import { deleteAccount } from "./actions";
+
+const VIEW_ONLY = "View only - sign in to make changes.";
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
@@ -62,12 +65,15 @@ export function AccountsView({ activity }: { activity: AccountActivity[] }) {
   const [transferOpen, setTransferOpen] = React.useState(false);
   const [transferPreset, setTransferPreset] = React.useState<TransferPreset | null>(null);
   const [breakdown, setBreakdown] = React.useState<Breakdown | null>(null);
+  const readOnly = useReadOnly();
 
   function onTransfer() {
+    if (readOnly) return void toast.info(VIEW_ONLY);
     setTransferPreset(null);
     setTransferOpen(true);
   }
   function onPayoff(a: AccountActivity) {
+    if (readOnly) return void toast.info(VIEW_ONLY);
     if (a.balance === 0) {
       toast.info(`${a.account.name} is already at $0.`);
       return;
@@ -138,14 +144,17 @@ export function AccountsView({ activity }: { activity: AccountActivity[] }) {
     .map((a, i) => ({ name: a.account.name, value: a.balance, color: hueColor(210 + i * 28) }));
 
   function onAdd() {
+    if (readOnly) return void toast.info(VIEW_ONLY);
     setEditing(null);
     setDialogOpen(true);
   }
   function onEdit(a: AccountActivity) {
+    if (readOnly) return void toast.info(VIEW_ONLY);
     setEditing(a);
     setDialogOpen(true);
   }
   function onDelete(a: AccountActivity) {
+    if (readOnly) return void toast.info(VIEW_ONLY);
     if (!window.confirm(`Delete "${a.account.name}"?`)) return;
     deleteAccount(a.account.id).then((res) => {
       if (!res.ok) toast.error(res.error ?? "Failed to delete.");

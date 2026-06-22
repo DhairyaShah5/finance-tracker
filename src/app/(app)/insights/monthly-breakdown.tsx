@@ -29,6 +29,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Money } from "@/components/money";
+import { useReadOnly } from "@/components/read-only-context";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { setTransactionBudgetGroup } from "../transactions/actions";
 
@@ -73,6 +74,7 @@ export function MonthlyBreakdown({
   details: DetailItem[];
 }) {
   const router = useRouter();
+  const readOnly = useReadOnly();
   const [pending, start] = React.useTransition();
   const [openMonth, setOpenMonth] = React.useState<string | null>(null);
   const selected = months.find((m) => m.month === openMonth) ?? null;
@@ -183,7 +185,7 @@ export function MonthlyBreakdown({
                         <Select
                           value={d.group === "unclassified" ? NONE : d.group}
                           onValueChange={(v) => changeGroup(d.id, v)}
-                          disabled={pending}
+                          disabled={pending || readOnly}
                         >
                           <SelectTrigger className="h-7 w-32 shrink-0 text-xs">
                             <SelectValue placeholder="Unclassified" />
