@@ -15,7 +15,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // so seeding here would race the page's queries.
 
   return (
-    <div className="flex min-h-screen flex-col lg:flex-row">
+    <div className="flex min-h-dvh flex-col lg:flex-row">
       <AppSidebar email={user.email ?? "Signed in"} />
       <main className="flex-1 overflow-x-hidden">
         <div className="mx-auto w-full max-w-6xl animate-in fade-in-0 duration-500 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">

@@ -319,7 +319,7 @@ export default async function DashboardPage() {
           <Reveal delay={420}>
             <div className="grid gap-4 lg:grid-cols-5">
               <Card className="surface lg:col-span-3">
-                <CardHeader className="flex-row items-center justify-between">
+                <CardHeader className="flex flex-row items-center justify-between gap-2">
                   <CardTitle>Recent transactions</CardTitle>
                   <Link href="/transactions" className="text-sm text-primary underline-offset-2 hover:underline">
                     View all
@@ -349,7 +349,7 @@ export default async function DashboardPage() {
                 </CardContent>
               </Card>
               <Card className="surface lg:col-span-2">
-                <CardHeader className="flex-row items-center justify-between">
+                <CardHeader className="flex flex-row items-center justify-between gap-2">
                   <CardTitle>Accounts</CardTitle>
                   <Link href="/accounts" className="text-sm text-primary underline-offset-2 hover:underline">
                     View all

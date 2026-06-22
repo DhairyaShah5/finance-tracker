@@ -299,7 +299,7 @@ export function TransactionsView({
     <div className="space-y-4">
       {/* Toolbar */}
       <div className="flex flex-col gap-2 rounded-2xl border border-border bg-card/60 p-2 backdrop-blur-sm sm:flex-row sm:flex-wrap sm:items-center">
-        <div className="relative flex-1 sm:min-w-50">
+        <div className="relative w-full sm:w-auto sm:flex-1 sm:min-w-50">
           <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
@@ -308,34 +308,36 @@ export function TransactionsView({
             className="border-transparent bg-background/60 pl-8"
           />
         </div>
-        <Select value={direction} onValueChange={setDirection}>
-          <SelectTrigger className="w-32 border-transparent bg-background/60"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All types</SelectItem>
-            <SelectItem value="outflow">Expenses</SelectItem>
-            <SelectItem value="inflow">Income</SelectItem>
-            <SelectItem value="transfer">Excluded</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={account} onValueChange={setAccount}>
-          <SelectTrigger className="w-40 border-transparent bg-background/60"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All accounts</SelectItem>
-            {lookups.accounts.map((a) => (
-              <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={category} onValueChange={setCategory}>
-          <SelectTrigger className="w-40 border-transparent bg-background/60"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All categories</SelectItem>
-            {lookups.categories.map((c) => (
-              <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button onClick={onAdd} className="gap-1.5">
+        <div className="grid grid-cols-3 gap-2 sm:contents">
+          <Select value={direction} onValueChange={setDirection}>
+            <SelectTrigger className="w-full border-transparent bg-background/60 sm:w-32"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All types</SelectItem>
+              <SelectItem value="outflow">Expenses</SelectItem>
+              <SelectItem value="inflow">Income</SelectItem>
+              <SelectItem value="transfer">Excluded</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={account} onValueChange={setAccount}>
+            <SelectTrigger className="w-full border-transparent bg-background/60 sm:w-40"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All accounts</SelectItem>
+              {lookups.accounts.map((a) => (
+                <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={category} onValueChange={setCategory}>
+            <SelectTrigger className="w-full border-transparent bg-background/60 sm:w-40"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All categories</SelectItem>
+              {lookups.categories.map((c) => (
+                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <Button onClick={onAdd} className="w-full gap-1.5 sm:w-auto">
           <Plus className="size-4" /> Add
         </Button>
       </div>

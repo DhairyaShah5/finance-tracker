@@ -181,7 +181,7 @@ export function BudgetView({
       {/* Each month's own budget vs what was spent, across all months */}
       <Reveal delay={60}>
         <Card className="surface">
-          <CardHeader className="flex-row items-center justify-between">
+          <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle>Afford vs expected vs spent</CardTitle>
             <ChartLegend
               items={[
@@ -210,7 +210,7 @@ export function BudgetView({
       <Reveal delay={120}>
         <div className="grid gap-4 lg:grid-cols-5">
           <Card className="surface lg:col-span-3">
-            <CardHeader className="flex-row items-center justify-between">
+            <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <CardTitle>Budget vs spent by category · {monthShort}</CardTitle>
               <ChartLegend
                 items={[
@@ -257,7 +257,7 @@ export function BudgetView({
       {/* Per-category */}
       <Reveal delay={160}>
         <Card className="surface">
-          <CardHeader className="flex-row items-center justify-between">
+          <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle>By category · {monthShort}</CardTitle>
             <Link
               href="/settings"

@@ -99,9 +99,9 @@ export function MonthlyBreakdown({
           <TableHeader>
             <TableRow>
               <TableHead>Month</TableHead>
-              <TableHead className="text-right">Needs</TableHead>
-              <TableHead className="text-right">Wants</TableHead>
-              <TableHead className="text-right">Savings</TableHead>
+              <TableHead className="hidden text-right sm:table-cell">Needs</TableHead>
+              <TableHead className="hidden text-right sm:table-cell">Wants</TableHead>
+              <TableHead className="hidden text-right sm:table-cell">Savings</TableHead>
               <TableHead className="text-right">Total out</TableHead>
               <TableHead className="hidden text-right sm:table-cell">Income</TableHead>
               <TableHead className="text-right">Split (N/W/S)</TableHead>
@@ -119,9 +119,9 @@ export function MonthlyBreakdown({
                   onClick={() => setOpenMonth(m.month)}
                 >
                   <TableCell className="font-medium">{m.label}</TableCell>
-                  <TableCell className="text-right"><Money value={m.needs} /></TableCell>
-                  <TableCell className="text-right"><Money value={m.wants} /></TableCell>
-                  <TableCell className="text-right"><Money value={m.savings} /></TableCell>
+                  <TableCell className="hidden text-right sm:table-cell"><Money value={m.needs} /></TableCell>
+                  <TableCell className="hidden text-right sm:table-cell"><Money value={m.wants} /></TableCell>
+                  <TableCell className="hidden text-right sm:table-cell"><Money value={m.savings} /></TableCell>
                   <TableCell className="text-right font-medium"><Money value={m.total} /></TableCell>
                   <TableCell className="hidden text-right text-muted-foreground sm:table-cell">
                     <Money value={income[m.month] ?? 0} />
