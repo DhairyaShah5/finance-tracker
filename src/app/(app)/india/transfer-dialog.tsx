@@ -16,11 +16,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { fmtNumber } from "@/lib/format";
+import { fmtNumber, todayISO } from "@/lib/format";
 import type { IndiaTransferRow } from "@/lib/database.types";
 import { createTransfer, updateTransfer, type TransferInput } from "./actions";
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = todayISO;
 
 export function TransferDialog({
   open,

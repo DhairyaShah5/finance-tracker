@@ -37,14 +37,14 @@ import { Card } from "@/components/ui/card";
 import { Money } from "@/components/money";
 import { Reveal } from "@/components/reveal";
 import { ReconciliationFlow } from "@/components/reconciliation";
-import { fmtDate, fmtMoney, hueColor, monthLabel, monthKey } from "@/lib/format";
+import { fmtDate, fmtMoney, hueColor, monthLabel, monthKey, todayISO } from "@/lib/format";
 import { myAmount, isSavingsTxn, reconcile, signed, monthlyBalances } from "@/lib/calc";
 import { cn } from "@/lib/utils";
 import type { TransactionRow } from "@/lib/database.types";
 import { TransactionDialog, type TxnLookups } from "./transaction-dialog";
 import { deleteTransaction, setTransactionTransfer } from "./actions";
 
-const CURRENT_MONTH = new Date().toISOString().slice(0, 7);
+const CURRENT_MONTH = todayISO().slice(0, 7);
 
 export function TransactionsView({
   transactions,

@@ -64,6 +64,16 @@ export function monthKey(iso: string): string {
   return iso.slice(0, 7);
 }
 
+/**
+ * Today's date as 'YYYY-MM-DD' in the user's LOCAL timezone. Built from local
+ * date parts, not toISOString() (which is UTC and rolls over to tomorrow in the
+ * Americas every evening).
+ */
+export function todayISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 /** Human label for a 'YYYY-MM' month key, e.g. "Aug 2025". */
 export function monthLabel(key: string): string {
   return format(parseISO(`${key}-01`), "MMM yyyy");

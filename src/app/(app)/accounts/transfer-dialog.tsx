@@ -23,11 +23,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { fmtMoney } from "@/lib/format";
+import { fmtMoney, todayISO } from "@/lib/format";
 import type { AccountActivity } from "@/lib/calc";
 import { logTransfer, type TransferInput } from "./actions";
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = todayISO;
 
 export interface TransferPreset {
   fromAccountId?: string;

@@ -23,12 +23,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { fmtMoney } from "@/lib/format";
+import { fmtMoney, todayISO } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { AccountRow, DebtorRow } from "@/lib/database.types";
 import { settleDebtor, type SettleInput } from "./actions";
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = todayISO;
 type Mode = "cash" | "in_kind";
 
 export function SettleDialog({

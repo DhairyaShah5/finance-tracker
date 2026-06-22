@@ -31,11 +31,11 @@ import type {
   TransactionRow,
 } from "@/lib/database.types";
 import { WHOSE_EXPENSE_VALUES } from "@/lib/defaults";
-import { fmtMoney } from "@/lib/format";
+import { fmtMoney, todayISO } from "@/lib/format";
 import { createTransaction, updateTransaction, type TransactionInput } from "./actions";
 
 const NONE = "__none__";
-const today = () => new Date().toISOString().slice(0, 10);
+const today = todayISO;
 
 type Mode = "expense" | "income" | "transfer";
 
