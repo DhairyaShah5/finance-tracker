@@ -75,6 +75,7 @@ export interface Database {
           monthly_budget: number | null;
           budget_group: "needs" | "wants" | "savings" | null;
           linked_account_id: string | null;
+          no_budget: boolean;
           display_order: number;
         } & Timestamps;
         Insert: {
@@ -86,6 +87,7 @@ export interface Database {
           monthly_budget?: number | null;
           budget_group?: "needs" | "wants" | "savings" | null;
           linked_account_id?: string | null;
+          no_budget?: boolean;
           display_order?: number;
           created_at?: string;
         };

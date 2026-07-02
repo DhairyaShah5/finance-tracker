@@ -49,6 +49,7 @@ const categorySchema = z.object({
   name: z.string().trim().min(1, "Name is required."),
   color_hue: z.coerce.number().int().min(0, "Hue must be 0–360.").max(360, "Hue must be 0–360."),
   monthly_budget: z.coerce.number().min(0, "Budget can't be negative.").nullable().optional(),
+  no_budget: z.coerce.boolean().optional(),
 });
 
 export type CategoryInput = z.input<typeof categorySchema>;
@@ -78,7 +79,8 @@ export async function createCategory(input: CategoryInput): Promise<ActionResult
       user_id: user.id,
       name: parsed.data.name,
       color_hue: parsed.data.color_hue,
-      monthly_budget: parsed.data.monthly_budget ?? null,
+      monthly_budget: parsed.data.no_budget ? null : parsed.data.monthly_budget ?? null,
+      no_budget: parsed.data.no_budget ?? false,
       display_order,
     });
   if (error) return { ok: false, error: error.message };
@@ -97,7 +99,8 @@ export async function updateCategory(id: string, input: CategoryInput): Promise<
     .update({
       name: parsed.data.name,
       color_hue: parsed.data.color_hue,
-      monthly_budget: parsed.data.monthly_budget ?? null,
+      monthly_budget: parsed.data.no_budget ? null : parsed.data.monthly_budget ?? null,
+      no_budget: parsed.data.no_budget ?? false,
     })
     .eq("id", id)
     .eq("user_id", user.id);

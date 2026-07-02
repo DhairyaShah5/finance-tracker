@@ -51,9 +51,11 @@ function CategoriesSection({ categories }: { categories: CategoryRow[] }) {
   const [editName, setEditName] = React.useState("");
   const [editHue, setEditHue] = React.useState("250");
   const [editBudget, setEditBudget] = React.useState("");
+  const [editNoBudget, setEditNoBudget] = React.useState(false);
   const [newName, setNewName] = React.useState("");
   const [newHue, setNewHue] = React.useState("250");
   const [newBudget, setNewBudget] = React.useState("");
+  const [newNoBudget, setNewNoBudget] = React.useState(false);
 
   const toBudget = (v: string) => (v.trim() === "" ? null : Number(v));
 
@@ -63,13 +65,19 @@ function CategoriesSection({ categories }: { categories: CategoryRow[] }) {
     setEditName(c.name);
     setEditHue(String(c.color_hue ?? 250));
     setEditBudget(c.monthly_budget != null ? String(c.monthly_budget) : "");
+    setEditNoBudget(c.no_budget);
   }
   function cancelEdit() {
     setEditingId(null);
   }
   function saveEdit(id: string) {
     start(async () => {
-      const res = await updateCategory(id, { name: editName, color_hue: editHue, monthly_budget: toBudget(editBudget) });
+      const res = await updateCategory(id, {
+        name: editName,
+        color_hue: editHue,
+        monthly_budget: toBudget(editBudget),
+        no_budget: editNoBudget,
+      });
       if (!res.ok) {
         toast.error(res.error ?? "Failed to update category.");
         return;
@@ -99,7 +107,12 @@ function CategoriesSection({ categories }: { categories: CategoryRow[] }) {
       return;
     }
     start(async () => {
-      const res = await createCategory({ name: newName, color_hue: newHue, monthly_budget: toBudget(newBudget) });
+      const res = await createCategory({
+        name: newName,
+        color_hue: newHue,
+        monthly_budget: toBudget(newBudget),
+        no_budget: newNoBudget,
+      });
       if (!res.ok) {
         toast.error(res.error ?? "Failed to add category.");
         return;
@@ -108,6 +121,7 @@ function CategoriesSection({ categories }: { categories: CategoryRow[] }) {
       setNewName("");
       setNewHue("250");
       setNewBudget("");
+      setNewNoBudget(false);
       router.refresh();
     });
   }
@@ -120,8 +134,8 @@ function CategoriesSection({ categories }: { categories: CategoryRow[] }) {
         </CardTitle>
         <CardDescription>
           Name each category, pick a swatch color, and optionally pin a monthly budget. Leave the
-          budget blank to auto-adapt it to your recent spending. Needs / Wants / Savings is set per
-          transaction.
+          budget blank to auto-adapt it to your recent spending, or flag a catch-all as One-off so
+          it's never budgeted. Needs / Wants / Savings is set per transaction.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -154,12 +168,17 @@ function CategoriesSection({ categories }: { categories: CategoryRow[] }) {
                     type="number"
                     min="0"
                     inputMode="decimal"
-                    value={editBudget}
+                    value={editNoBudget ? "" : editBudget}
                     onChange={(e) => setEditBudget(e.target.value)}
                     className="h-8 w-24"
-                    placeholder="auto"
+                    placeholder={editNoBudget ? "none" : "auto"}
                     aria-label="Monthly budget"
+                    disabled={editNoBudget}
                   />
+                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Switch checked={editNoBudget} onCheckedChange={setEditNoBudget} />
+                    One-off
+                  </label>
                   <Button size="icon" className="size-8" onClick={() => saveEdit(c.id)} disabled={pending || readOnly}>
                     <Check className="size-4" />
                   </Button>
@@ -171,7 +190,11 @@ function CategoriesSection({ categories }: { categories: CategoryRow[] }) {
                 <div key={c.id} className="flex items-center gap-3 px-3 py-2">
                   <Swatch hue={c.color_hue} />
                   <span className="flex-1 truncate text-sm font-medium">{c.name}</span>
-                  {c.monthly_budget != null ? (
+                  {c.no_budget ? (
+                    <Badge variant="outline" className="shrink-0 text-[10px]">
+                      one-off
+                    </Badge>
+                  ) : c.monthly_budget != null ? (
                     <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                       {fmtMoney(c.monthly_budget)}/mo
                     </span>
@@ -226,12 +249,17 @@ function CategoriesSection({ categories }: { categories: CategoryRow[] }) {
               type="number"
               min="0"
               inputMode="decimal"
-              value={newBudget}
+              value={newNoBudget ? "" : newBudget}
               onChange={(e) => setNewBudget(e.target.value)}
               className="w-24"
-              placeholder="auto"
+              placeholder={newNoBudget ? "none" : "auto"}
+              disabled={newNoBudget}
             />
           </div>
+          <label className="flex h-9 items-center gap-2 text-sm text-muted-foreground">
+            <Switch checked={newNoBudget} onCheckedChange={setNewNoBudget} />
+            One-off
+          </label>
           <Button onClick={add} disabled={pending || readOnly} className="gap-1.5">
             <Plus className="size-4" /> Add
           </Button>

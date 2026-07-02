@@ -437,14 +437,20 @@ export function monthlyBudgetStatus(
   );
   const affordable = round2(Math.max(recentIncome - savingsTarget, runwayFloor));
 
-  const learned = categories.map((c) => ({ c, ...learn(c.id) }));
+  // "no budget" categories (one-off catch-alls) are excluded from learning and
+  // allocation entirely, so they never contribute to the affordable split.
+  const learned = categories.map((c) => ({
+    c,
+    ...(c.no_budget ? { expected: 0, trend: "flat" as const } : learn(c.id)),
+  }));
   const expectedTotal = round2(learned.reduce((s, x) => s + x.expected, 0));
 
   let totalBudget = 0;
   let anyPinned = false;
   const cats: CategoryBudget[] = [];
   for (const { c, expected, trend } of learned) {
-    const pinned = c.monthly_budget != null ? round2(c.monthly_budget) : null;
+    // no_budget forces a 0 budget with no pin (shows as "one-off / no budget").
+    const pinned = !c.no_budget && c.monthly_budget != null ? round2(c.monthly_budget) : null;
     if (pinned != null) anyPinned = true;
     // Split the affordable total across categories by their share of expected spend.
     const allocation =
