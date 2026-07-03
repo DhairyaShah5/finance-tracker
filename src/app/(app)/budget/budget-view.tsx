@@ -100,7 +100,6 @@ export function BudgetView({
   const monthly = statuses.map((s) => ({
     label: s.label.split(" ")[0],
     Budget: s.totalBudget,
-    Expected: s.expected,
     Spent: s.totalSpent,
   }));
 
@@ -178,12 +177,11 @@ export function BudgetView({
       <Reveal delay={60}>
         <Card className="surface">
           <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle>Budget vs expected vs spent</CardTitle>
+            <CardTitle>Budget vs spent</CardTitle>
             <ChartLegend
               items={[
                 { label: "Spent", color: "var(--chart-1)" },
                 { label: "Budget", color: "var(--chart-3)", dashed: true },
-                { label: "Expected", color: "var(--chart-5)", dashed: true },
               ]}
             />
           </CardHeader>
@@ -192,7 +190,6 @@ export function BudgetView({
               data={monthly}
               series={[
                 { key: "Budget", name: "Budget", color: "var(--chart-3)", dashed: true },
-                { key: "Expected", name: "Expected", color: "var(--chart-5)", dashed: true },
                 { key: "Spent", name: "Spent", color: "var(--chart-1)" },
               ]}
               height={260}

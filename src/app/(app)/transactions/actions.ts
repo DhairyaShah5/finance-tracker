@@ -146,18 +146,21 @@ export async function setTransactionBudgetGroup(
 }
 
 // ---------------------------------------------------------------------------
-// Mark a reimbursable expense as reimbursed - the money landed back in one of
-// your accounts. Records it as an excluded inflow (raises your balance, but is
-// NOT income, since it's your own fronted money returning) and flips the
-// expense's `reimbursed` flag so it stops showing as owed back to you.
+// Record a reimbursement against a reimbursable expense - money landed back in
+// one of your accounts. Supports partial / installment reimbursements: `amount`
+// is capped at what's still outstanding, added to the expense's running
+// `reimbursed_amount`, and `reimbursed` flips true once it's fully paid back.
+// Each reimbursement is booked as an excluded inflow (raises your balance, but is
+// NOT income, since it's your own fronted money returning).
 //
-// If the reimbursement arrived bundled with a paycheck, log the paycheck for the
+// If a reimbursement arrived bundled with a paycheck, log the paycheck for the
 // salary portion only and use this for the reimbursement portion - the two
 // inflows then add up to the real deposit.
 // ---------------------------------------------------------------------------
 const reimburseSchema = z.object({
   transaction_id: z.string().uuid(),
   account_id: z.string().uuid("Pick an account."),
+  amount: z.coerce.number().positive("Amount must be greater than 0."),
   txn_date: z.string().min(10),
   description: z.string().trim().nullable().optional(),
 });
@@ -179,10 +182,14 @@ export async function markReimbursed(input: ReimburseInput): Promise<ActionResul
     .single();
   if (tErr || !txn) return { ok: false, error: "Transaction not found." };
   if (!txn.reimbursable) return { ok: false, error: "That expense isn't marked reimbursable." };
-  if (txn.reimbursed) return { ok: false, error: "Already reimbursed." };
 
-  const back = round2(txn.amount - myAmount(txn)); // the reimbursable portion
-  if (back <= 0) return { ok: false, error: "Nothing to reimburse on this expense." };
+  const owed = round2(txn.amount - myAmount(txn)); // the reimbursable portion
+  const already = round2(txn.reimbursed_amount ?? 0);
+  const remaining = round2(owed - already);
+  if (remaining <= 0) return { ok: false, error: "Already fully reimbursed." };
+
+  const back = round2(Math.min(d.amount, remaining)); // never over-reimburse
+  if (back <= 0) return { ok: false, error: "Nothing left to reimburse." };
 
   const row: TxnInsert = {
     user_id: user.id,
@@ -197,9 +204,10 @@ export async function markReimbursed(input: ReimburseInput): Promise<ActionResul
   const { error: insErr } = await supabase.from("transactions").insert(row);
   if (insErr) return { ok: false, error: insErr.message };
 
+  const newTotal = round2(already + back);
   const { error: updErr } = await supabase
     .from("transactions")
-    .update({ reimbursed: true })
+    .update({ reimbursed_amount: newTotal, reimbursed: newTotal >= owed - 0.005 })
     .eq("id", txn.id)
     .eq("user_id", user.id);
   if (updErr) return { ok: false, error: updErr.message };

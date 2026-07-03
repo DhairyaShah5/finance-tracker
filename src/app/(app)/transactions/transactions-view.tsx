@@ -314,7 +314,7 @@ export function TransactionsView({
             </DropdownMenuItem>
             {!t.is_transfer && t.reimbursable && !t.reimbursed ? (
               <DropdownMenuItem onClick={() => onReimburse(t)}>
-                <HandCoins className="size-4" /> Mark reimbursed
+                <HandCoins className="size-4" /> Record reimbursement
               </DropdownMenuItem>
             ) : null}
             <DropdownMenuItem onClick={() => onToggleTransfer(t)}>

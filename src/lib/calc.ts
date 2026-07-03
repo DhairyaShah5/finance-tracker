@@ -64,19 +64,22 @@ export function myAmount(
  * Money you fronted on reimbursable expenses that hasn't been paid back yet - a
  * receivable, not spending. The reimbursable portion of each expense is the part
  * that isn't your own share (usually the whole amount, or `amount − my_share`
- * when you kept a slice). Once an expense is reimbursed, it drops out.
+ * when you kept a slice), minus whatever has already been paid back
+ * (`reimbursed_amount`, which supports partial / installment reimbursements).
  */
 export function pendingReimbursements(
   txns: Pick<
     TransactionRow,
-    "direction" | "amount" | "is_transfer" | "whose_expense" | "split_count" | "my_share" | "reimbursable" | "reimbursed"
+    "direction" | "amount" | "is_transfer" | "whose_expense" | "split_count" | "my_share" | "reimbursable" | "reimbursed_amount"
   >[],
 ): number {
   let total = 0;
   for (const t of txns) {
     if (t.direction !== "outflow" || t.is_transfer) continue;
-    if (!t.reimbursable || t.reimbursed) continue;
-    total = round2(total + round2(t.amount - myAmount(t))); // the part coming back to you
+    if (!t.reimbursable) continue;
+    const owed = round2(t.amount - myAmount(t)); // the part meant to come back to you
+    const back = round2(owed - (t.reimbursed_amount ?? 0)); // still outstanding
+    if (back > 0) total = round2(total + back);
   }
   return round2(total);
 }

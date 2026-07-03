@@ -322,13 +322,17 @@ export function TransactionDialog({
                   </p>
                   {existing?.reimbursed ? (
                     <p className="text-xs font-medium text-positive">Already reimbursed.</p>
+                  ) : (existing?.reimbursed_amount ?? 0) > 0 ? (
+                    <p className="text-xs font-medium text-primary">
+                      Partly reimbursed: {fmtMoney(existing!.reimbursed_amount, { cents: true })} back so far.
+                    </p>
                   ) : null}
                 </div>
                 <Switch
                   id="reimbursable"
                   checked={reimbursable}
                   onCheckedChange={setReimbursable}
-                  disabled={existing?.reimbursed ?? false}
+                  disabled={(existing?.reimbursed_amount ?? 0) > 0}
                 />
               </div>
 

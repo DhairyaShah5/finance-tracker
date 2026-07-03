@@ -152,6 +152,7 @@ export interface Database {
           budget_group: "needs" | "wants" | "savings" | null;
           reimbursable: boolean;
           reimbursed: boolean;
+          reimbursed_amount: number;
           notes: string | null;
         } & Timestamps & WithUpdated;
         Insert: {
@@ -172,6 +173,7 @@ export interface Database {
           budget_group?: "needs" | "wants" | "savings" | null;
           reimbursable?: boolean;
           reimbursed?: boolean;
+          reimbursed_amount?: number;
           notes?: string | null;
           created_at?: string;
           updated_at?: string;
