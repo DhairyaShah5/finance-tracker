@@ -150,6 +150,8 @@ export interface Database {
           split_count: number | null;
           my_share: number | null;
           budget_group: "needs" | "wants" | "savings" | null;
+          reimbursable: boolean;
+          reimbursed: boolean;
           notes: string | null;
         } & Timestamps & WithUpdated;
         Insert: {
@@ -168,6 +170,8 @@ export interface Database {
           split_count?: number | null;
           my_share?: number | null;
           budget_group?: "needs" | "wants" | "savings" | null;
+          reimbursable?: boolean;
+          reimbursed?: boolean;
           notes?: string | null;
           created_at?: string;
           updated_at?: string;

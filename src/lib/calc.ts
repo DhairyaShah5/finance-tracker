@@ -40,20 +40,45 @@ export function isSavingsTxn(t: Pick<TransactionRow, "budget_group">): boolean {
  * The portion of an OUTFLOW that is your own expense:
  *   My / none           → full amount
  *   Friend              → 0 (fronted entirely for someone else)
+ *   Reimbursable        → 0 (a work/other expense you will be paid back for)
  *   Group / Roommates   → amount ÷ split_count (your share; 0 if no split set)
- * Transfers and inflows → 0.
+ * An explicit `my_share` overrides all of the above (e.g. a partly reimbursable
+ * bill where you keep a slice). Transfers and inflows → 0.
  */
 export function myAmount(
-  t: Pick<TransactionRow, "direction" | "amount" | "is_transfer" | "whose_expense" | "split_count" | "my_share">,
+  t: Pick<TransactionRow, "direction" | "amount" | "is_transfer" | "whose_expense" | "split_count" | "my_share" | "reimbursable">,
 ): number {
   if (t.direction !== "outflow" || t.is_transfer) return 0;
-  // Explicit override (you covered more/less than the even split).
+  // Explicit override (you covered more/less than the even split, or kept a slice
+  // of a reimbursable bill) always wins.
   if (t.my_share != null) return round2(Math.min(t.my_share, t.amount));
+  if (t.reimbursable) return 0; // you will be paid back - not your spending
   if (t.whose_expense === "Friend") return 0;
   if (t.whose_expense === "Group" || t.whose_expense === "Roommates") {
     return t.split_count && t.split_count > 0 ? round2(t.amount / t.split_count) : 0;
   }
   return t.amount;
+}
+
+/**
+ * Money you fronted on reimbursable expenses that hasn't been paid back yet - a
+ * receivable, not spending. The reimbursable portion of each expense is the part
+ * that isn't your own share (usually the whole amount, or `amount − my_share`
+ * when you kept a slice). Once an expense is reimbursed, it drops out.
+ */
+export function pendingReimbursements(
+  txns: Pick<
+    TransactionRow,
+    "direction" | "amount" | "is_transfer" | "whose_expense" | "split_count" | "my_share" | "reimbursable" | "reimbursed"
+  >[],
+): number {
+  let total = 0;
+  for (const t of txns) {
+    if (t.direction !== "outflow" || t.is_transfer) continue;
+    if (!t.reimbursable || t.reimbursed) continue;
+    total = round2(total + round2(t.amount - myAmount(t))); // the part coming back to you
+  }
+  return round2(total);
 }
 
 // ---------------------------------------------------------------------------
@@ -279,19 +304,21 @@ export interface Reconciliation {
   arrivalCapital: number; // the slice of income you arrived with (shown for context)
   consumption: number; // your share of non-savings outflows (categorized spending)
   settled: number; // tiny net of informal friend/shared washes folded into spending
+  reimbursable: number; // fronted on reimbursable expenses, owed back to you (receivable)
   spending: number; // consumption + settled - the figure that closes the identity
   savings: number; // your share of savings outflows (investments, vault)
   currentBalance: number; // = net worth (the ground-truth account total)
 }
 
 /**
- * Decompose the ledger so the cash identity closes on three terms:
- *   income − spending − savings = current balance.
+ * Decompose the ledger so the cash identity closes:
+ *   income − spending − savings − reimbursable = current balance.
  * The arrival capital (the money you flew in with) IS income - your early
- * expenses came straight out of it. Friend-fronting and shared splits settle
- * informally and never net perfectly, leaving a tiny residual (`settled`); we
- * fold it into spending rather than show a separate line, so the waterfall stays
- * clean and exact.
+ * expenses came straight out of it. Money fronted on reimbursable expenses left
+ * your accounts but is owed back to you, so it's carried as its own receivable
+ * (`reimbursable`) rather than counted as spending. Friend-fronting and shared
+ * splits settle informally and never net perfectly, leaving a tiny residual
+ * (`settled`) which we fold into spending so the waterfall stays clean and exact.
  */
 export function reconcile(txns: TransactionRow[], netWorth: number): Reconciliation {
   let income = 0;
@@ -314,10 +341,14 @@ export function reconcile(txns: TransactionRow[], netWorth: number): Reconciliat
   consumption = round2(consumption);
   savings = round2(savings);
   const currentBalance = round2(netWorth);
-  // Residual from imperfect informal settlements - folded into spending.
-  const settled = round2(income - consumption - savings - currentBalance);
+  // Fronted reimbursable money is out of your accounts but coming back - carry it
+  // as a receivable, not spending, so "Total spent" stays equal to the categories.
+  const reimbursable = pendingReimbursements(txns);
+  // What's left after pulling out the receivable is the tiny informal-settlement
+  // residual - folded into spending.
+  const settled = round2(income - consumption - savings - currentBalance - reimbursable);
   const spending = round2(consumption + settled);
-  return { income, arrivalCapital, consumption, settled, spending, savings, currentBalance };
+  return { income, arrivalCapital, consumption, settled, reimbursable, spending, savings, currentBalance };
 }
 
 // ---------------------------------------------------------------------------

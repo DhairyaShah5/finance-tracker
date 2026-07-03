@@ -6,9 +6,11 @@ import { toast } from "sonner";
 import {
   ArrowDownLeft,
   ArrowLeftRight,
+  Check,
   ChevronDown,
   Eye,
   EyeOff,
+  HandCoins,
   MoreHorizontal,
   Pencil,
   PiggyBank,
@@ -43,6 +45,7 @@ import { cn } from "@/lib/utils";
 import type { TransactionRow } from "@/lib/database.types";
 import { useReadOnly } from "@/components/read-only-context";
 import { TransactionDialog, type TxnLookups } from "./transaction-dialog";
+import { ReimburseDialog } from "./reimburse-dialog";
 import { deleteTransaction, setTransactionTransfer } from "./actions";
 
 const VIEW_ONLY = "View only - sign in to make changes.";
@@ -75,6 +78,8 @@ export function TransactionsView({
 
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<TransactionRow | null>(null);
+  const [reimburseOpen, setReimburseOpen] = React.useState(false);
+  const [reimbursing, setReimbursing] = React.useState<TransactionRow | null>(null);
   // Current month starts expanded; other months collapsed.
   const [expanded, setExpanded] = React.useState<Set<string>>(() => new Set([CURRENT_MONTH]));
 
@@ -158,6 +163,11 @@ export function TransactionsView({
     if (readOnly) return void toast.info(VIEW_ONLY);
     setEditing(t);
     setDialogOpen(true);
+  }
+  function onReimburse(t: TransactionRow) {
+    if (readOnly) return void toast.info(VIEW_ONLY);
+    setReimbursing(t);
+    setReimburseOpen(true);
   }
   function onDelete(t: TransactionRow) {
     if (readOnly) return void toast.info(VIEW_ONLY);
@@ -244,6 +254,17 @@ export function TransactionsView({
             ) : t.whose_expense && t.whose_expense !== "My" ? (
               <Badge variant="outline" className="text-[10px]">{t.whose_expense}</Badge>
             ) : null}
+            {!t.is_transfer && t.reimbursable ? (
+              t.reimbursed ? (
+                <Badge variant="secondary" className="gap-1 text-[10px]">
+                  <Check className="size-2.5" /> Reimbursed
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="gap-1 text-[10px]">
+                  <HandCoins className="size-2.5" /> Reimbursable
+                </Badge>
+              )
+            ) : null}
           </div>
           <div className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-muted-foreground">
             <span className="tnum">{fmtDate(t.txn_date, "short")}</span>
@@ -291,6 +312,11 @@ export function TransactionsView({
             <DropdownMenuItem onClick={() => onEdit(t)}>
               <Pencil className="size-4" /> Edit
             </DropdownMenuItem>
+            {!t.is_transfer && t.reimbursable && !t.reimbursed ? (
+              <DropdownMenuItem onClick={() => onReimburse(t)}>
+                <HandCoins className="size-4" /> Mark reimbursed
+              </DropdownMenuItem>
+            ) : null}
             <DropdownMenuItem onClick={() => onToggleTransfer(t)}>
               {t.is_transfer ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
               {t.is_transfer ? "Include in totals" : "Exclude from totals"}
@@ -452,6 +478,12 @@ export function TransactionsView({
         onOpenChange={setDialogOpen}
         lookups={lookups}
         existing={editing}
+      />
+      <ReimburseDialog
+        open={reimburseOpen}
+        onOpenChange={setReimburseOpen}
+        transaction={reimbursing}
+        accounts={lookups.accounts}
       />
     </div>
   );

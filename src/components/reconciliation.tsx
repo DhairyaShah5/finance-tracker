@@ -29,6 +29,17 @@ export function ReconciliationFlow({ data }: { data: Reconciliation }) {
     },
     { label: "Spending", hint: "Your share of consumption", value: -data.spending, op: "−", tone: "negative" },
     { label: "Savings", hint: "Investments + vault, set aside", value: -data.savings, op: "−", tone: "muted" },
+    ...(data.reimbursable > 0
+      ? [
+          {
+            label: "Owed back",
+            hint: "Reimbursable expenses not yet paid back",
+            value: -data.reimbursable,
+            op: "−" as const,
+            tone: "muted" as const,
+          },
+        ]
+      : []),
     { label: "Available funds", hint: "What you can spend now", value: data.currentBalance, op: "=", tone: "neutral", strong: true },
   ];
 

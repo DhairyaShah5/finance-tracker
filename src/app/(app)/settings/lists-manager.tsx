@@ -135,7 +135,7 @@ function CategoriesSection({ categories }: { categories: CategoryRow[] }) {
         <CardDescription>
           Name each category, pick a swatch color, and optionally pin a monthly budget. Leave the
           budget blank to auto-adapt it to your recent spending, or flag a catch-all as One-off so
-          it's never budgeted. Needs / Wants / Savings is set per transaction.
+          it is never budgeted. Needs / Wants / Savings is set per transaction.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

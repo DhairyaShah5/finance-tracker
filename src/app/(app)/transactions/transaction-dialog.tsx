@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
 import type {
   AccountRow,
   CategoryRow,
@@ -73,6 +74,7 @@ export function TransactionDialog({
   const [splitCount, setSplitCount] = React.useState("2");
   const [myShare, setMyShare] = React.useState(""); // explicit "your share" override
   const [debtorId, setDebtorId] = React.useState(NONE);
+  const [reimbursable, setReimbursable] = React.useState(false);
   const [notes, setNotes] = React.useState("");
 
   React.useEffect(() => {
@@ -91,6 +93,7 @@ export function TransactionDialog({
       setSplitCount(existing.split_count ? String(existing.split_count) : "2");
       setMyShare(existing.my_share != null ? String(existing.my_share) : "");
       setDebtorId(existing.debtor_id ?? NONE);
+      setReimbursable(existing.reimbursable ?? false);
       setNotes(existing.notes ?? "");
     } else {
       setMode("expense");
@@ -106,6 +109,7 @@ export function TransactionDialog({
       setSplitCount("2");
       setMyShare("");
       setDebtorId(NONE);
+      setReimbursable(false);
       setNotes("");
     }
   }, [open, existing, lookups.accounts]);
@@ -136,6 +140,7 @@ export function TransactionDialog({
           ? (budgetGroup as TransactionInput["budget_group"])
           : null,
       debtor_id: debtorId === NONE ? null : debtorId,
+      reimbursable: mode === "expense" ? reimbursable : false,
       notes: notes || null,
       is_transfer: mode === "transfer",
     };
@@ -306,6 +311,25 @@ export function TransactionDialog({
                     </Select>
                   </div>
                 ) : null}
+              </div>
+
+              <div className="flex items-start justify-between gap-3 rounded-lg border border-border bg-secondary/40 p-3">
+                <div className="space-y-0.5">
+                  <Label htmlFor="reimbursable">Reimbursable</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Someone will pay you back for this (e.g. a work expense). It is kept out of your
+                    budget and tracked as owed back until the money lands.
+                  </p>
+                  {existing?.reimbursed ? (
+                    <p className="text-xs font-medium text-positive">Already reimbursed.</p>
+                  ) : null}
+                </div>
+                <Switch
+                  id="reimbursable"
+                  checked={reimbursable}
+                  onCheckedChange={setReimbursable}
+                  disabled={existing?.reimbursed ?? false}
+                />
               </div>
 
               {whose === "Group" || whose === "Roommates" ? (

@@ -61,6 +61,9 @@ export default async function DashboardPage() {
   // income (incl. arrival capital) − spending − savings − net-fronted = net worth.
   const recon = reconcile(txns, netWorth);
   const totalWealth = netWorth + recon.savings; // spendable + what's set aside
+  // Everything owed back to you: manually-tracked debtors + money fronted on
+  // reimbursable expenses that hasn't landed yet.
+  const totalOwed = r2(owed + recon.reimbursable);
 
   // Income split by source (arrival + each paycheck/inflow type) for the modal.
   // Sums to recon.income and grows automatically as new income lands.
@@ -235,8 +238,14 @@ export default async function DashboardPage() {
             <Reveal delay={240} className="h-full">
               <StatCard
                 label="Owed to me"
-                value={<CountUp value={owed} cents />}
-                hint={debtors.length ? `${debtors.length} debtor${debtors.length === 1 ? "" : "s"}` : "All settled"}
+                value={<CountUp value={totalOwed} cents />}
+                hint={
+                  recon.reimbursable > 0
+                    ? `${fmtMoney(recon.reimbursable)} reimbursable${debtors.length ? ` + ${debtors.length} debtor${debtors.length === 1 ? "" : "s"}` : ""}`
+                    : debtors.length
+                      ? `${debtors.length} debtor${debtors.length === 1 ? "" : "s"}`
+                      : "All settled"
+                }
                 icon={<Users />}
               />
             </Reveal>
