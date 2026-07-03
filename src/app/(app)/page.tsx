@@ -107,8 +107,7 @@ export default async function DashboardPage() {
     ...balanceTrend.map((p) => ({ label: p.label.split(" ")[0], balance: p.balance })),
   ];
   // Budget bar chart uses the same income-anchored engine as the Budget page,
-  // so the two always agree (recent income − savings target, allocated per month).
-  const savingsTarget = settings.savings_target ?? 0;
+  // so the two always agree (typical spend + headroom, allocated per month).
   const runwayFloor = settings.budget_months > 0 ? settings.starting_funds / settings.budget_months : 0;
   const now = new Date();
   const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -119,7 +118,6 @@ export default async function DashboardPage() {
       categories,
       m,
       m === currentMonth ? now.getDate() : undefined,
-      savingsTarget,
       runwayFloor,
     ),
   );

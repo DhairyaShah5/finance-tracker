@@ -321,11 +321,13 @@ export function reconcile(txns: TransactionRow[], netWorth: number): Reconciliat
 }
 
 // ---------------------------------------------------------------------------
-// Budgets - income-anchored. The monthly budget is what you can AFFORD:
-//   affordable = recent income - savings target  (floored at a runway allowance
-//   for low-income months). That total is split across categories by your recent
-//   spending mix, so it's both realistic (capped by income) and personalised.
-//   "expected" = what you typically spend, kept alongside as a reference.
+// Budgets - spending-anchored. The monthly budget is what you TYPICALLY spend
+// plus a modest headroom:
+//   budget total = expected spend * SPEND_HEADROOM  (floored at a runway
+//   allowance for months with little history). It's split across categories by
+//   your recent spending mix, so each category's budget is about what you
+//   usually spend there. This keeps the budget realistic and stable instead of
+//   ballooning in a high-income month. "expected" = what you typically spend.
 // ---------------------------------------------------------------------------
 export interface CategoryBudget {
   id: string;
@@ -345,9 +347,9 @@ export interface BudgetStatus {
   label: string;
   categories: CategoryBudget[];
   totalBudget: number; // sum of effective per-category budgets (~ affordable)
-  affordable: number; // recent income - savings target (runway floor)
+  affordable: number; // typical spend * headroom (runway floor) - the budget pool
   expected: number; // total you typically spend
-  income: number; // recent income used to anchor the budget
+  income: number; // recent income, shown for reference only (no longer anchors)
   totalSpent: number; // all non-savings spend this month (incl. uncategorized)
   unbudgetedSpent: number; // uncategorized spend this month
   remaining: number; // totalBudget - totalSpent
@@ -356,17 +358,16 @@ export interface BudgetStatus {
 }
 
 /**
- * This month's spend vs. an income-anchored budget. The affordable total is
- * `recent income - savingsTarget`, floored at `runwayFloor` so low-income months
- * still get a sensible allowance. It's allocated across categories by your recent
- * spending mix; a manual pin overrides a category's allocation.
+ * This month's spend vs. a spending-anchored budget. The budget pool is
+ * `expected spend * SPEND_HEADROOM`, floored at `runwayFloor` so months with
+ * little history still get a sensible allowance. It's allocated across categories
+ * by your recent spending mix; a manual pin overrides a category's allocation.
  */
 export function monthlyBudgetStatus(
   txns: TransactionRow[],
   categories: CategoryRow[],
   month: string,
   throughDay?: number,
-  savingsTarget = 0,
   runwayFloor = 0,
 ): BudgetStatus {
   const spentThis = new Map<string, number>();
@@ -431,19 +432,24 @@ export function monthlyBudgetStatus(
     return { expected, trend };
   };
 
-  // Affordable total = recent income - savings target, floored at the runway.
-  const recentIncome = round2(
-    windowMonths.reduce((s, w) => s + (incomeByM.get(w.key) ?? 0) / w.dist, 0) / wsum,
-  );
-  const affordable = round2(Math.max(recentIncome - savingsTarget, runwayFloor));
-
   // "no budget" categories (one-off catch-alls) are excluded from learning and
-  // allocation entirely, so they never contribute to the affordable split.
+  // allocation entirely, so they never contribute to the split.
   const learned = categories.map((c) => ({
     c,
     ...(c.no_budget ? { expected: 0, trend: "flat" as const } : learn(c.id)),
   }));
   const expectedTotal = round2(learned.reduce((s, x) => s + x.expected, 0));
+
+  // Spending-anchored budget: what you typically spend, plus a modest headroom -
+  // so it stays realistic and stable even when income swings (a big
+  // internship-paycheck month shouldn't triple your budget). Floored at the
+  // runway allowance for months with little spending history. recentIncome is
+  // kept for reference in the UI only; it no longer drives the budget.
+  const SPEND_HEADROOM = 1.15;
+  const recentIncome = round2(
+    windowMonths.reduce((s, w) => s + (incomeByM.get(w.key) ?? 0) / w.dist, 0) / wsum,
+  );
+  const affordable = round2(Math.max(expectedTotal * SPEND_HEADROOM, runwayFloor));
 
   let totalBudget = 0;
   let anyPinned = false;

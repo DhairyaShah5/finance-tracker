@@ -57,12 +57,10 @@ export function BudgetView({
   statuses,
   currentMonth,
   daysLeft,
-  savingsTarget,
 }: {
   statuses: BudgetStatus[];
   currentMonth: string;
   daysLeft: number;
-  savingsTarget: number;
 }) {
   const currentIdx = statuses.findIndex((s) => s.month === currentMonth);
   const [idx, setIdx] = React.useState(currentIdx === -1 ? statuses.length - 1 : currentIdx);
@@ -89,8 +87,6 @@ export function BudgetView({
   const pct = status.totalBudget > 0 ? status.totalSpent / status.totalBudget : 0;
   const daily = left > 0 && daysLeft > 0 ? left / daysLeft : 0;
   const over = left < 0;
-  const monthNum = Number(status.month.slice(5, 7));
-  const summer = monthNum >= 6 && monthNum <= 8;
   const monthShort = status.label.split(" ")[0];
 
   const donut = status.categories
@@ -182,11 +178,11 @@ export function BudgetView({
       <Reveal delay={60}>
         <Card className="surface">
           <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle>Afford vs expected vs spent</CardTitle>
+            <CardTitle>Budget vs expected vs spent</CardTitle>
             <ChartLegend
               items={[
                 { label: "Spent", color: "var(--chart-1)" },
-                { label: "Afford", color: "var(--chart-3)", dashed: true },
+                { label: "Budget", color: "var(--chart-3)", dashed: true },
                 { label: "Expected", color: "var(--chart-5)", dashed: true },
               ]}
             />
@@ -195,7 +191,7 @@ export function BudgetView({
             <TrendChart
               data={monthly}
               series={[
-                { key: "Budget", name: "Afford", color: "var(--chart-3)", dashed: true },
+                { key: "Budget", name: "Budget", color: "var(--chart-3)", dashed: true },
                 { key: "Expected", name: "Expected", color: "var(--chart-5)", dashed: true },
                 { key: "Spent", name: "Spent", color: "var(--chart-1)" },
               ]}
@@ -245,11 +241,9 @@ export function BudgetView({
       <div className="flex items-start gap-2 rounded-xl border border-border bg-card/50 px-3.5 py-2.5 text-xs text-muted-foreground backdrop-blur-sm">
         <Sparkles className="mt-0.5 size-3.5 shrink-0 text-primary" />
         <p>
-          Your budget is what you can afford: recent income {fmtMoney(status.income)} −{" "}
-          {fmtMoney(savingsTarget)} savings = {fmtMoney(status.affordable)}, split across categories by
-          your spending mix. You typically spend about {fmtMoney(status.expected)}.
-          {summer ? " Summer internship income is lifting it; it'll ease when you're back on campus." : ""}{" "}
-          Set your savings target or pin a category in{" "}
+          Your budget is based on what you typically spend, about {fmtMoney(status.expected)} a month,
+          plus a little headroom. It stays steady even when your income swings, so a big paycheck month
+          never inflates it. Pin a category or mark a catch-all as one-off in{" "}
           <Link href="/settings" className="text-primary underline-offset-2 hover:underline">Settings</Link>.
         </p>
       </div>

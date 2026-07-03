@@ -18,7 +18,6 @@ export default async function BudgetPage() {
   const categories = catsRes.data ?? [];
   const settings = settingsRes.data ?? { starting_funds: 0, budget_months: 12, savings_target: 0 };
 
-  const savingsTarget = settings.savings_target ?? 0;
   const runwayFloor = settings.budget_months > 0 ? settings.starting_funds / settings.budget_months : 0;
 
   const now = new Date();
@@ -34,7 +33,6 @@ export default async function BudgetPage() {
       categories,
       m,
       m === currentMonth ? now.getDate() : undefined,
-      savingsTarget,
       runwayFloor,
     ),
   );
@@ -43,9 +41,9 @@ export default async function BudgetPage() {
     <div className="space-y-6">
       <PageHeader
         title="Budget"
-        description="What you can afford each month: recent income minus your savings target. Browse any month."
+        description="Based on what you typically spend each month, plus a little headroom. Browse any month."
       />
-      <BudgetView statuses={statuses} currentMonth={currentMonth} daysLeft={daysLeft} savingsTarget={savingsTarget} />
+      <BudgetView statuses={statuses} currentMonth={currentMonth} daysLeft={daysLeft} />
     </div>
   );
 }
