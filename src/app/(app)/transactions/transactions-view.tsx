@@ -308,7 +308,7 @@ export function TransactionsView({
               <MoreHorizontal className="size-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
             <DropdownMenuItem onClick={() => onEdit(t)}>
               <Pencil className="size-4" /> Edit
             </DropdownMenuItem>
