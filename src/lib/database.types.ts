@@ -153,6 +153,7 @@ export interface Database {
           reimbursable: boolean;
           reimbursed: boolean;
           reimbursed_amount: number;
+          reimburses_id: string | null;
           notes: string | null;
         } & Timestamps & WithUpdated;
         Insert: {
@@ -174,6 +175,7 @@ export interface Database {
           reimbursable?: boolean;
           reimbursed?: boolean;
           reimbursed_amount?: number;
+          reimburses_id?: string | null;
           notes?: string | null;
           created_at?: string;
           updated_at?: string;

@@ -108,8 +108,39 @@ export async function updateTransaction(id: string, input: TransactionInput): Pr
 export async function deleteTransaction(id: string): Promise<ActionResult> {
   const { supabase, user } = await authed();
   if (!user) return { ok: false, error: "Not signed in." };
+
+  // If this is a reimbursement inflow, grab its link + amount first so we can
+  // roll back the parent expense's running total after it's gone.
+  const { data: row } = await supabase
+    .from("transactions")
+    .select("amount, reimburses_id")
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .single();
+
   const { error } = await supabase.from("transactions").delete().eq("id", id).eq("user_id", user.id);
   if (error) return { ok: false, error: error.message };
+
+  if (row?.reimburses_id) {
+    // Deleting a reimbursement returns the money to "still owed": subtract it
+    // from the expense's reimbursed_amount and clear the fully-paid flag.
+    const { data: parent } = await supabase
+      .from("transactions")
+      .select("amount, whose_expense, split_count, my_share, reimbursable, direction, is_transfer, reimbursed_amount")
+      .eq("id", row.reimburses_id)
+      .eq("user_id", user.id)
+      .single();
+    if (parent) {
+      const owed = round2(parent.amount - myAmount(parent));
+      const newTotal = round2(Math.max(0, (parent.reimbursed_amount ?? 0) - row.amount));
+      await supabase
+        .from("transactions")
+        .update({ reimbursed_amount: newTotal, reimbursed: newTotal >= owed - 0.005 })
+        .eq("id", row.reimburses_id)
+        .eq("user_id", user.id);
+    }
+  }
+
   revalidate();
   return { ok: true };
 }
@@ -199,6 +230,7 @@ export async function markReimbursed(input: ReimburseInput): Promise<ActionResul
     direction: "inflow",
     is_transfer: true, // fronted money returning - excluded from income, raises balance
     description: d.description?.trim() || `Reimbursed: ${txn.description}`,
+    reimburses_id: txn.id, // link back to the expense, so deleting this reverses it
     notes: `Reimbursement for "${txn.description}" (${back.toFixed(2)}).`,
   };
   const { error: insErr } = await supabase.from("transactions").insert(row);
@@ -209,6 +241,45 @@ export async function markReimbursed(input: ReimburseInput): Promise<ActionResul
     .from("transactions")
     .update({ reimbursed_amount: newTotal, reimbursed: newTotal >= owed - 0.005 })
     .eq("id", txn.id)
+    .eq("user_id", user.id);
+  if (updErr) return { ok: false, error: updErr.message };
+
+  revalidate();
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Write off the un-returned remainder of a reimbursable expense. Use this when a
+// reimbursement came back only partly and the rest never will (e.g. you got $10
+// of an $11.52 bill back). The outstanding slice stops being a receivable and
+// becomes your own spending, so "owed to me" drops to zero and the books balance.
+// Implemented by pinning `my_share` to your real out-of-pocket cost (existing
+// share + the written-off remainder) and flipping `reimbursed` closed.
+// ---------------------------------------------------------------------------
+export async function settleReimbursement(id: string): Promise<ActionResult> {
+  const { supabase, user } = await authed();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const { data: txn, error } = await supabase
+    .from("transactions")
+    .select("*")
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .single();
+  if (error || !txn) return { ok: false, error: "Transaction not found." };
+  if (!txn.reimbursable) return { ok: false, error: "That expense isn't marked reimbursable." };
+
+  const owed = round2(txn.amount - myAmount(txn));
+  const already = round2(txn.reimbursed_amount ?? 0);
+  const outstanding = round2(Math.max(0, owed - already));
+  if (outstanding <= 0) return { ok: false, error: "Nothing left to write off." };
+
+  // Whatever won't come back is money you actually spent.
+  const newMyShare = round2(myAmount(txn) + outstanding);
+  const { error: updErr } = await supabase
+    .from("transactions")
+    .update({ my_share: newMyShare, reimbursed: true })
+    .eq("id", id)
     .eq("user_id", user.id);
   if (updErr) return { ok: false, error: updErr.message };
 

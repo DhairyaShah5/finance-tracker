@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import {
   ArrowDownLeft,
   ArrowLeftRight,
+  Ban,
   Check,
   ChevronDown,
   Eye,
@@ -46,7 +47,7 @@ import type { TransactionRow } from "@/lib/database.types";
 import { useReadOnly } from "@/components/read-only-context";
 import { TransactionDialog, type TxnLookups } from "./transaction-dialog";
 import { ReimburseDialog } from "./reimburse-dialog";
-import { deleteTransaction, setTransactionTransfer } from "./actions";
+import { deleteTransaction, setTransactionTransfer, settleReimbursement } from "./actions";
 
 const VIEW_ONLY = "View only - sign in to make changes.";
 
@@ -169,6 +170,22 @@ export function TransactionsView({
     setReimbursing(t);
     setReimburseOpen(true);
   }
+  function onSettle(t: TransactionRow, outstanding: number) {
+    if (readOnly) return void toast.info(VIEW_ONLY);
+    if (
+      !window.confirm(
+        `Write off ${fmtMoney(outstanding, { cents: true })} of "${t.description}" as your own spending? It will stop showing as owed to you.`,
+      )
+    )
+      return;
+    settleReimbursement(t.id).then((res) => {
+      if (!res.ok) toast.error(res.error ?? "Failed to write off.");
+      else {
+        toast.success("Written off as spent. No longer owed to you.");
+        router.refresh();
+      }
+    });
+  }
   function onDelete(t: TransactionRow) {
     if (readOnly) return void toast.info(VIEW_ONLY);
     if (!window.confirm(`Delete "${t.description}"?`)) return;
@@ -225,6 +242,9 @@ export function TransactionsView({
     const color = cat ? hueColor(cat.color_hue) : "var(--muted-foreground)";
     const isSplit =
       !t.is_transfer && !!t.split_count && (t.whose_expense === "Group" || t.whose_expense === "Roommates");
+    // Reimbursable money still outstanding on this expense (for the write-off action).
+    const owedBack = !t.is_transfer && t.reimbursable ? t.amount - myAmount(t) : 0;
+    const outstanding = Math.max(0, owedBack - (t.reimbursed_amount ?? 0));
     return (
       <div
         key={t.id}
@@ -315,6 +335,11 @@ export function TransactionsView({
             {!t.is_transfer && t.reimbursable && !t.reimbursed ? (
               <DropdownMenuItem onClick={() => onReimburse(t)}>
                 <HandCoins className="size-4" /> Record reimbursement
+              </DropdownMenuItem>
+            ) : null}
+            {!t.is_transfer && t.reimbursable && !t.reimbursed && outstanding > 0.005 ? (
+              <DropdownMenuItem onClick={() => onSettle(t, outstanding)}>
+                <Ban className="size-4" /> Write off {fmtMoney(outstanding, { cents: true })} as spent
               </DropdownMenuItem>
             ) : null}
             <DropdownMenuItem onClick={() => onToggleTransfer(t)}>
