@@ -40,14 +40,15 @@ export function ReconciliationFlow({ data }: { data: Reconciliation }) {
           },
         ]
       : []),
-    // The net of informal friend / shared-split settlements that never reconcile
-    // to the penny. Positive = you came out ahead on shared costs. Its own line so
-    // "Spending" above stays exactly the sum of your categories.
+    // Difference between your logged activity and your actual account balances.
+    // A non-zero value usually means an account balance needs correcting (e.g. a
+    // credit-card balance that drifted). Its own line so "Spending" above stays
+    // exactly the sum of your categories.
     ...(Math.abs(data.settled) >= 0.01
       ? [
           {
-            label: "Settlements",
-            hint: "Net of shared / split-cost settlements",
+            label: "Unreconciled",
+            hint: "Logged activity vs. your actual balances",
             value: -data.settled,
             op: (-data.settled >= 0 ? "+" : "−") as "+" | "−",
             tone: "muted" as const,

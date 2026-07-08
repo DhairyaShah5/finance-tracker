@@ -327,7 +327,7 @@ export interface Reconciliation {
   income: number; // every inflow that stayed yours - paychecks + the arrival capital
   arrivalCapital: number; // the slice of income you arrived with (shown for context)
   consumption: number; // your NET share of non-savings outflows (== spending == donut)
-  settled: number; // net of informal friend/shared settlements - its own waterfall line
+  settled: number; // unreconciled gap: logged activity vs. actual balances (own line)
   reimbursable: number; // fronted on reimbursable expenses, owed back to you (receivable)
   spending: number; // your net spending - equals the category totals exactly
   savings: number; // your share of savings outflows (investments, vault)
@@ -342,9 +342,10 @@ export interface Reconciliation {
  * cent. The arrival capital (the money you flew in with) IS income. Refunds /
  * returns (categorized inflows) reduce the category they came from, not income.
  * Money fronted on reimbursable expenses is carried as a receivable
- * (`reimbursable`), not spending. Whatever is left over - the net of informal
- * friend / shared-split settlements that never reconcile to the penny - is
- * `settled`, shown as its own honest line rather than hidden inside spending.
+ * (`reimbursable`), not spending. Whatever is left over - the gap between your
+ * logged activity and your actual account balances (usually a balance that needs
+ * correcting) - is `settled`, shown as its own honest line rather than hidden
+ * inside spending.
  */
 export function reconcile(txns: TransactionRow[], netWorth: number): Reconciliation {
   let income = 0;
