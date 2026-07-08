@@ -27,7 +27,7 @@ export function ReconciliationFlow({ data }: { data: Reconciliation }) {
       op: "",
       tone: "positive",
     },
-    { label: "Spending", hint: "Your share of consumption", value: -data.spending, op: "−", tone: "negative" },
+    { label: "Spending", hint: "Your net share of consumption", value: -data.spending, op: "−", tone: "negative" },
     { label: "Savings", hint: "Investments + vault, set aside", value: -data.savings, op: "−", tone: "muted" },
     ...(data.reimbursable > 0
       ? [
@@ -36,6 +36,20 @@ export function ReconciliationFlow({ data }: { data: Reconciliation }) {
             hint: "Reimbursable expenses not yet paid back",
             value: -data.reimbursable,
             op: "−" as const,
+            tone: "muted" as const,
+          },
+        ]
+      : []),
+    // The net of informal friend / shared-split settlements that never reconcile
+    // to the penny. Positive = you came out ahead on shared costs. Its own line so
+    // "Spending" above stays exactly the sum of your categories.
+    ...(Math.abs(data.settled) >= 0.01
+      ? [
+          {
+            label: "Settlements",
+            hint: "Net of shared / split-cost settlements",
+            value: -data.settled,
+            op: (-data.settled >= 0 ? "+" : "−") as "+" | "−",
             tone: "muted" as const,
           },
         ]

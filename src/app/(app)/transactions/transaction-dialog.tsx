@@ -75,6 +75,9 @@ export function TransactionDialog({
   const [myShare, setMyShare] = React.useState(""); // explicit "your share" override
   const [debtorId, setDebtorId] = React.useState(NONE);
   const [reimbursable, setReimbursable] = React.useState(false);
+  // An income entry that is really returned spend (a refund / money back). It
+  // nets against a category instead of counting as income.
+  const [isRefund, setIsRefund] = React.useState(false);
   const [notes, setNotes] = React.useState("");
 
   React.useEffect(() => {
@@ -94,6 +97,8 @@ export function TransactionDialog({
       setMyShare(existing.my_share != null ? String(existing.my_share) : "");
       setDebtorId(existing.debtor_id ?? NONE);
       setReimbursable(existing.reimbursable ?? false);
+      // A non-transfer inflow carrying a category is a refund / return.
+      setIsRefund(existing.direction === "inflow" && !existing.is_transfer && existing.category_id != null);
       setNotes(existing.notes ?? "");
     } else {
       setMode("expense");
@@ -110,25 +115,33 @@ export function TransactionDialog({
       setMyShare("");
       setDebtorId(NONE);
       setReimbursable(false);
+      setIsRefund(false);
       setNotes("");
     }
   }, [open, existing, lookups.accounts]);
 
   function submit() {
     const direction = mode === "transfer" ? transferDir : mode === "income" ? "inflow" : "outflow";
+    const refund = mode === "income" && isRefund;
     // Every expense must be categorized; there is no "Uncategorized" bucket.
     if (mode === "expense" && categoryId === NONE) {
       toast.error("Pick a category for this expense.");
       return;
     }
+    // A refund nets against a category, so it needs one.
+    if (refund && categoryId === NONE) {
+      toast.error("Pick the category this refund came from.");
+      return;
+    }
     const input: TransactionInput = {
       txn_date: date,
       account_id: accountId,
-      category_id: categoryId === NONE ? null : categoryId,
+      // Expenses and refunds carry a category; plain income does not.
+      category_id: (mode === "expense" || refund) && categoryId !== NONE ? categoryId : null,
       description,
       direction,
       amount,
-      inflow_type_id: inflowTypeId === NONE ? null : inflowTypeId,
+      inflow_type_id: mode === "income" && !refund && inflowTypeId !== NONE ? inflowTypeId : null,
       whose_expense: whose as TransactionInput["whose_expense"],
       split_count:
         mode === "expense" && (whose === "Group" || whose === "Roommates")
@@ -240,6 +253,18 @@ export function TransactionDialog({
                   </SelectContent>
                 </Select>
               </div>
+            ) : mode === "income" && isRefund ? (
+              <div className="space-y-1.5">
+                <Label>Refund category</Label>
+                <Select value={categoryId} onValueChange={setCategoryId}>
+                  <SelectTrigger><SelectValue placeholder="Category it came from" /></SelectTrigger>
+                  <SelectContent>
+                    {lookups.categories.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             ) : mode === "income" ? (
               <div className="space-y-1.5">
                 <Label>Income type</Label>
@@ -266,6 +291,18 @@ export function TransactionDialog({
               </div>
             )}
           </div>
+
+          {mode === "income" ? (
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
+              <div className="space-y-0.5">
+                <Label htmlFor="is-refund" className="text-sm">Refund / money back</Label>
+                <p className="text-xs text-muted-foreground">
+                  Money coming back on a purchase. It nets against the category instead of counting as income.
+                </p>
+              </div>
+              <Switch id="is-refund" checked={isRefund} onCheckedChange={setIsRefund} />
+            </div>
+          ) : null}
 
           {mode === "expense" ? (
             <>

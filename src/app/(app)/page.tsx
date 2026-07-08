@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Landmark, PiggyBank, TrendingDown, Users, Wallet } from "lucide-react";
+import { Landmark, PiggyBank, TrendingDown, Wallet } from "lucide-react";
 import { requireUser } from "@/lib/queries";
 import {
   buildMonthlySummaries,
@@ -11,6 +11,7 @@ import {
   realBalanceTrend,
   reconcile,
   isArrivalDeposit,
+  myAmount,
   sumOwed,
   signed,
 } from "@/lib/calc";
@@ -18,6 +19,7 @@ import { fmtMoney, fmtDate, hueColor, monthKey, monthLabel } from "@/lib/format"
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
 import { IncomeCard, type IncomeSource } from "@/components/income-card";
+import { OwedCard } from "@/components/owed-card";
 import { Money } from "@/components/money";
 import { CountUp } from "@/components/count-up";
 import { Reveal } from "@/components/reveal";
@@ -62,8 +64,28 @@ export default async function DashboardPage() {
   const recon = reconcile(txns, netWorth);
   const totalWealth = netWorth + recon.savings; // spendable + what's set aside
   // Everything owed back to you: manually-tracked debtors + money fronted on
-  // reimbursable expenses that hasn't landed yet.
+  // reimbursable expenses that hasn't landed yet. Itemized for the modal.
   const totalOwed = r2(owed + recon.reimbursable);
+  const owedReimbursables = txns
+    .filter((t) => t.direction === "outflow" && !t.is_transfer && t.reimbursable)
+    .map((t) => ({
+      id: t.id,
+      description: t.description,
+      date: t.txn_date,
+      outstanding: r2(r2(t.amount - myAmount(t)) - (t.reimbursed_amount ?? 0)),
+    }))
+    .filter((r) => r.outstanding > 0.005)
+    .sort((a, b) => (a.date < b.date ? 1 : -1));
+  const owedDebtors = debtors
+    .filter((d) => Math.abs(d.amount) > 0.005)
+    .map((d) => ({ id: d.id, name: d.name, note: d.note, amount: d.amount }))
+    .sort((a, b) => b.amount - a.amount);
+  const owedHint =
+    recon.reimbursable > 0
+      ? `${fmtMoney(recon.reimbursable)} reimbursable${owedDebtors.length ? ` + ${owedDebtors.length} debtor${owedDebtors.length === 1 ? "" : "s"}` : ""}`
+      : owedDebtors.length
+        ? `${owedDebtors.length} debtor${owedDebtors.length === 1 ? "" : "s"}`
+        : "All settled";
 
   // Income split by source (arrival + each paycheck/inflow type) for the modal.
   // Sums to recon.income and grows automatically as new income lands.
@@ -71,6 +93,7 @@ export default async function DashboardPage() {
   const incomeAgg = new Map<string, { total: number; count: number }>();
   for (const t of txns) {
     if (t.direction !== "inflow" || t.is_transfer) continue;
+    if (t.category_id) continue; // categorized inflow = refund/return, not income
     const label = isArrivalDeposit(t)
       ? "Arrival capital"
       : t.inflow_type_id
@@ -129,10 +152,9 @@ export default async function DashboardPage() {
     Spent: s.totalSpent,
     Budget: s.totalBudget,
   }));
-  // Spending donut: every category expanded (no "Other" bucket). Its total, the
-  // "Total spent" KPI, and the Transactions reconciliation all equal recon.spending
-  // (informal friend-fronting is absorbed into each expense's share, so there's no
-  // separate residual slice).
+  // Spending donut: every category expanded (no "Other" bucket). Refunds are
+  // netted into their category, so the donut total, the "Total spent" KPI
+  // (recon.spending), and the reconciliation "Spending" line all agree exactly.
   const spendDonut = catTotals
     .filter((c) => c.total > 0)
     .map((c) => ({ name: c.name, value: c.total, color: hueColor(c.hue) }));
@@ -236,17 +258,11 @@ export default async function DashboardPage() {
               />
             </Reveal>
             <Reveal delay={240} className="h-full">
-              <StatCard
-                label="Owed to me"
-                value={<CountUp value={totalOwed} cents />}
-                hint={
-                  recon.reimbursable > 0
-                    ? `${fmtMoney(recon.reimbursable)} reimbursable${debtors.length ? ` + ${debtors.length} debtor${debtors.length === 1 ? "" : "s"}` : ""}`
-                    : debtors.length
-                      ? `${debtors.length} debtor${debtors.length === 1 ? "" : "s"}`
-                      : "All settled"
-                }
-                icon={<Users />}
+              <OwedCard
+                total={totalOwed}
+                reimbursables={owedReimbursables}
+                debtors={owedDebtors}
+                hint={owedHint}
               />
             </Reveal>
           </div>

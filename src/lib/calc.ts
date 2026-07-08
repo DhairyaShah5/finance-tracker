@@ -37,6 +37,19 @@ export function isSavingsTxn(t: Pick<TransactionRow, "budget_group">): boolean {
 }
 
 /**
+ * A refund / return: money spent that is coming back to you. Modeled as a
+ * categorized INFLOW - it nets against that category's spending (so the category
+ * reflects your NET cost) and is NOT counted as income. Regular income inflows
+ * carry an inflow_type and no category; a refund carries a category. Transfers
+ * (fronted money returning, internal moves) are never refunds.
+ */
+export function isRefund(
+  t: Pick<TransactionRow, "direction" | "is_transfer" | "category_id">,
+): boolean {
+  return t.direction === "inflow" && !t.is_transfer && t.category_id != null;
+}
+
+/**
  * The portion of an OUTFLOW that is your own expense:
  *   My / none           → full amount
  *   Friend              → 0 (fronted entirely for someone else)
@@ -228,6 +241,14 @@ export function categoryTotals(
   const byId = new Map(categories.map((c) => [c.id, c]));
   const agg = new Map<string | null, { total: number; count: number }>();
   for (const t of txns) {
+    // Refunds (categorized inflows) are returned spend - subtract from the
+    // category so it shows your NET cost, matching the reconciliation.
+    if (isRefund(t)) {
+      const cur = agg.get(t.category_id) ?? { total: 0, count: 0 };
+      cur.total -= t.amount;
+      agg.set(t.category_id, cur);
+      continue;
+    }
     if (t.direction !== "outflow") continue;
     // Savings (investments, vault) are not spending - keep them out of the breakdown.
     if (isSavingsTxn(t)) continue;
@@ -305,23 +326,25 @@ export function budgetGroupsByMonth(txns: TransactionRow[]): MonthGroups[] {
 export interface Reconciliation {
   income: number; // every inflow that stayed yours - paychecks + the arrival capital
   arrivalCapital: number; // the slice of income you arrived with (shown for context)
-  consumption: number; // your share of non-savings outflows (categorized spending)
-  settled: number; // tiny net of informal friend/shared washes folded into spending
+  consumption: number; // your NET share of non-savings outflows (== spending == donut)
+  settled: number; // net of informal friend/shared settlements - its own waterfall line
   reimbursable: number; // fronted on reimbursable expenses, owed back to you (receivable)
-  spending: number; // consumption + settled - the figure that closes the identity
+  spending: number; // your net spending - equals the category totals exactly
   savings: number; // your share of savings outflows (investments, vault)
   currentBalance: number; // = net worth (the ground-truth account total)
 }
 
 /**
  * Decompose the ledger so the cash identity closes:
- *   income − spending − savings − reimbursable = current balance.
- * The arrival capital (the money you flew in with) IS income - your early
- * expenses came straight out of it. Money fronted on reimbursable expenses left
- * your accounts but is owed back to you, so it's carried as its own receivable
- * (`reimbursable`) rather than counted as spending. Friend-fronting and shared
- * splits settle informally and never net perfectly, leaving a tiny residual
- * (`settled`) which we fold into spending so the waterfall stays clean and exact.
+ *   income − spending − savings − reimbursable − settled = current balance.
+ * `spending` is your NET consumption - the sum of every category's spend, refunds
+ * already netted out - so the "Total spent" KPI equals the category donut to the
+ * cent. The arrival capital (the money you flew in with) IS income. Refunds /
+ * returns (categorized inflows) reduce the category they came from, not income.
+ * Money fronted on reimbursable expenses is carried as a receivable
+ * (`reimbursable`), not spending. Whatever is left over - the net of informal
+ * friend / shared-split settlements that never reconcile to the penny - is
+ * `settled`, shown as its own honest line rather than hidden inside spending.
  */
 export function reconcile(txns: TransactionRow[], netWorth: number): Reconciliation {
   let income = 0;
@@ -330,7 +353,9 @@ export function reconcile(txns: TransactionRow[], netWorth: number): Reconciliat
   let savings = 0;
   for (const t of txns) {
     if (t.is_transfer) continue;
-    if (t.direction === "inflow") {
+    if (isRefund(t)) {
+      consumption -= t.amount; // returned spend - nets against your consumption, not income
+    } else if (t.direction === "inflow") {
       income += t.amount;
       if (isArrivalDeposit(t)) arrivalCapital += t.amount;
     } else if (isSavingsTxn(t)) {
@@ -345,12 +370,12 @@ export function reconcile(txns: TransactionRow[], netWorth: number): Reconciliat
   savings = round2(savings);
   const currentBalance = round2(netWorth);
   // Fronted reimbursable money is out of your accounts but coming back - carry it
-  // as a receivable, not spending, so "Total spent" stays equal to the categories.
+  // as a receivable, not spending.
   const reimbursable = pendingReimbursements(txns);
-  // What's left after pulling out the receivable is the tiny informal-settlement
-  // residual - folded into spending.
+  // The leftover informal-settlement residual gets its own line - NOT folded into
+  // spending, so "Total spent" stays equal to the category donut.
   const settled = round2(income - consumption - savings - currentBalance - reimbursable);
-  const spending = round2(consumption + settled);
+  const spending = consumption;
   return { income, arrivalCapital, consumption, settled, reimbursable, spending, savings, currentBalance };
 }
 
