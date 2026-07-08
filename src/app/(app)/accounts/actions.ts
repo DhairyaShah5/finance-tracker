@@ -36,18 +36,52 @@ function revalidate() {
   for (const p of ["/accounts", "/"]) revalidatePath(p);
 }
 
-/** Σ signed (inflow +, outflow −) over all of an account's transactions. */
-async function deltaFor(
+/**
+ * The net activity layered on top of opening_balance to reach the displayed
+ * balance. MUST match accountActivity() in calc.ts exactly, which is:
+ *   opening_balance + delta + linked
+ * where `delta` is the signed sum of the account's own transactions and `linked`
+ * is category-linked credit: non-transfer outflows in categories that point here
+ * as their destination (e.g. "Tuition Vault" -> Marcus HYSA) raise this balance.
+ * Missing the `linked` term made the balance back-solve wrong for any linked
+ * destination account (Marcus HYSA, RobinHood).
+ */
+async function activityFor(
   supabase: SupabaseClient<Database>,
   userId: string,
   accountId: string,
 ): Promise<number> {
-  const { data } = await supabase
+  const { data: own } = await supabase
     .from("transactions")
     .select("direction, amount")
     .eq("user_id", userId)
     .eq("account_id", accountId);
-  return (data ?? []).reduce((s, t) => s + (t.direction === "inflow" ? t.amount : -t.amount), 0);
+  const delta = (own ?? []).reduce(
+    (s, t) => s + (t.direction === "inflow" ? t.amount : -t.amount),
+    0,
+  );
+
+  // Categories whose linked_account_id points at this account.
+  const { data: cats } = await supabase
+    .from("categories")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("linked_account_id", accountId);
+  const catIds = (cats ?? []).map((c) => c.id);
+  let linked = 0;
+  if (catIds.length > 0) {
+    const { data: linkedTxns } = await supabase
+      .from("transactions")
+      .select("amount, direction, is_transfer")
+      .eq("user_id", userId)
+      .in("category_id", catIds);
+    linked = (linkedTxns ?? []).reduce(
+      (s, t) => s + (t.direction === "outflow" && !t.is_transfer ? t.amount : 0),
+      0,
+    );
+  }
+
+  return delta + linked;
 }
 
 function isUniqueViolation(message: string): boolean {
@@ -94,7 +128,7 @@ export async function updateAccount(id: string, input: AccountInput): Promise<Ac
   if (!user) return { ok: false, error: "Not signed in." };
 
   const d = parsed.data;
-  const delta = await deltaFor(supabase, user.id, id);
+  const activity = await activityFor(supabase, user.id, id);
   const { error } = await supabase
     .from("accounts")
     .update({
@@ -103,7 +137,7 @@ export async function updateAccount(id: string, input: AccountInput): Promise<Ac
       type: d.type,
       is_credit: d.type === "credit_card",
       // Back-solve so the displayed (opening + activity) equals the desired balance.
-      opening_balance: round2(d.balance - delta),
+      opening_balance: round2(d.balance - activity),
       include_in_net_worth: d.include_in_net_worth,
     })
     .eq("id", id)
