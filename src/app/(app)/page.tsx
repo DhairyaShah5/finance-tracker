@@ -8,7 +8,6 @@ import {
   monthlyBalances,
   categoryTotals,
   accountActivity,
-  realBalanceTrend,
   reconcile,
   isArrivalDeposit,
   myAmount,
@@ -108,29 +107,25 @@ export default async function DashboardPage() {
     .map(([label, v]) => ({ label, total: r2(v.total), count: v.count }))
     .sort((a, b) => b.total - a.total);
 
-  // Opening/closing available-funds balance per month (newest first) - fills out
-  // the balance-over-time card and matches the Transactions ledger figures.
+  // Opening/closing available-funds balance per month - the SINGLE source of
+  // truth for both the balance-over-time chart and the month table below it, so
+  // the two can never disagree. Only net-worth accounts move the balance.
   const nwIds = new Set(accounts.filter((a) => a.include_in_net_worth).map((a) => a.id));
-  const monthRows = [...monthlyBalances(txns, nwIds, netWorth).entries()]
+  const balancesByMonth = [...monthlyBalances(txns, nwIds, netWorth).entries()]
     .map(([m, b]) => ({ key: m, label: monthLabel(m), opening: b.opening, closing: b.closing }))
-    .sort((a, b) => (a.key < b.key ? 1 : -1));
+    .sort((a, b) => (a.key < b.key ? -1 : 1)); // oldest -> newest
+  const monthRows = [...balancesByMonth].reverse(); // newest first for the table
 
   const summaries = buildMonthlySummaries(txns, {
     monthlyBudget: monthlyBudget(settings),
-    openingBalance: 0, // closing chain unused here; the trend uses realBalanceTrend
+    openingBalance: 0, // closing chain unused here; the chart uses monthlyBalances
   });
 
-  // Chart series - balance trajectory from arrival capital to current net worth.
-  // Exclude the arrival deposits themselves (they constitute the starting
-  // balance, so counting them as flows would double-count). This matches the
-  // source workbook's monthly closing balances exactly.
-  const balanceTrend = realBalanceTrend(
-    txns.filter((t) => !isArrivalDeposit(t)),
-    netWorth,
-  );
+  // Chart series - the exact monthly closing balances, so the line always matches
+  // the month table. "Start" is the balance going into the first tracked month.
   const balanceSeries = [
-    { label: "Start", balance: settings.starting_funds },
-    ...balanceTrend.map((p) => ({ label: p.label.split(" ")[0], balance: p.balance })),
+    { label: "Start", balance: balancesByMonth[0]?.opening ?? settings.starting_funds },
+    ...balancesByMonth.map((b) => ({ label: b.label.split(" ")[0], balance: b.closing })),
   ];
   // Budget bar chart uses the same income-anchored engine as the Budget page,
   // so the two always agree (typical spend + headroom, allocated per month).
