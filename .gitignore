@@ -44,3 +44,7 @@ next-env.d.ts
 /data/*.xlsx
 /data/_scratch_*
 /_research/
+
+# graphify — local knowledge-graph tooling (machine-specific hook path + build output)
+/graphify-out/
+/.claude/settings.json
