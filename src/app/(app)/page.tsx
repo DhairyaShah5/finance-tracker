@@ -9,8 +9,8 @@ import {
   categoryTotals,
   accountActivity,
   reconcile,
-  moneyFlow,
   isArrivalDeposit,
+  isSavingsTxn,
   myAmount,
   sumOwed,
   signed,
@@ -27,7 +27,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TrendChart, BarSeriesChart } from "@/components/charts";
 import { DonutBreakdown } from "@/components/donut-breakdown";
-import { MoneyFlowSankey } from "@/components/money-flow";
+import { SpendingTreemap, type TreemapCat } from "@/components/spending-treemap";
 
 export const dynamic = "force-dynamic";
 
@@ -156,13 +156,31 @@ export default async function DashboardPage() {
     .filter((c) => c.total > 0)
     .map((c) => ({ name: c.name, value: c.total, color: hueColor(c.hue) }));
 
-  // Money-flow Sankey: income sources -> one pool -> spending / savings / owed /
-  // still-on-hand. Mirrors the reconciliation, so the ribbons balance to the cent.
-  const flow = moneyFlow(txns, categories, inflowTypes, netWorth);
 
   // Recent transactions
   const catById = new Map(categories.map((c) => [c.id, c]));
   const acctById = new Map(accounts.map((a) => [a.id, a]));
+
+  // Spending treemap: each category is a tile sized by your spend; drilling into
+  // one reveals the individual transactions that make it up.
+  const treemapByCat = new Map<string, TreemapCat>();
+  for (const t of txns) {
+    if (t.direction !== "outflow" || t.is_transfer || isSavingsTxn(t)) continue;
+    const share = myAmount(t);
+    if (share <= 0) continue;
+    const key = t.category_id ?? "__none__";
+    const cat = t.category_id ? catById.get(t.category_id) : undefined;
+    const g =
+      treemapByCat.get(key) ??
+      { id: key, name: cat?.name ?? "Uncategorized", hue: cat?.color_hue ?? null, total: 0, txns: [] };
+    g.total = r2(g.total + share);
+    g.txns.push({ name: t.description, value: r2(share), date: t.txn_date });
+    treemapByCat.set(key, g);
+  }
+  const treemapCats: TreemapCat[] = [...treemapByCat.values()]
+    .map((c) => ({ ...c, txns: c.txns.sort((a, b) => b.value - a.value) }))
+    .filter((c) => c.total > 0)
+    .sort((a, b) => b.total - a.total);
   const recent = [...txns]
     .sort((a, b) => (a.txn_date < b.txn_date ? 1 : a.txn_date > b.txn_date ? -1 : 0))
     .slice(0, 8);
@@ -321,17 +339,17 @@ export default async function DashboardPage() {
             </div>
           </Reveal>
 
-          {/* Money-flow Sankey - every dollar from source to destination */}
+          {/* Spending treemap - click a category to drill into its transactions */}
           <Reveal delay={330}>
             <Card className="surface">
               <CardHeader>
-                <CardTitle>Where your money flows</CardTitle>
+                <CardTitle>Where your money goes</CardTitle>
                 <p className="text-sm text-muted-foreground">
-                  {fmtMoney(flow.total)} in, traced from each source to where it ended up.
+                  Click any category to zoom into the transactions behind it.
                 </p>
               </CardHeader>
               <CardContent>
-                <MoneyFlowSankey data={flow} />
+                <SpendingTreemap data={treemapCats} />
               </CardContent>
             </Card>
           </Reveal>
