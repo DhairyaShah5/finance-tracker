@@ -9,6 +9,7 @@ import {
   categoryTotals,
   accountActivity,
   reconcile,
+  moneyFlow,
   isArrivalDeposit,
   myAmount,
   sumOwed,
@@ -26,6 +27,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TrendChart, BarSeriesChart } from "@/components/charts";
 import { DonutBreakdown } from "@/components/donut-breakdown";
+import { MoneyFlowSankey } from "@/components/money-flow";
 
 export const dynamic = "force-dynamic";
 
@@ -153,6 +155,10 @@ export default async function DashboardPage() {
   const spendDonut = catTotals
     .filter((c) => c.total > 0)
     .map((c) => ({ name: c.name, value: c.total, color: hueColor(c.hue) }));
+
+  // Money-flow Sankey: income sources -> one pool -> spending / savings / owed /
+  // still-on-hand. Mirrors the reconciliation, so the ribbons balance to the cent.
+  const flow = moneyFlow(txns, categories, inflowTypes, netWorth);
 
   // Recent transactions
   const catById = new Map(categories.map((c) => [c.id, c]));
@@ -313,6 +319,21 @@ export default async function DashboardPage() {
                 </CardContent>
               </Card>
             </div>
+          </Reveal>
+
+          {/* Money-flow Sankey - every dollar from source to destination */}
+          <Reveal delay={330}>
+            <Card className="surface">
+              <CardHeader>
+                <CardTitle>Where your money flows</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  {fmtMoney(flow.total)} in, traced from each source to where it ended up.
+                </p>
+              </CardHeader>
+              <CardContent>
+                <MoneyFlowSankey data={flow} />
+              </CardContent>
+            </Card>
           </Reveal>
 
           {/* Monthly spending vs budget */}
