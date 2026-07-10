@@ -7,7 +7,6 @@ export type WhoseExpense = (typeof WHOSE_EXPENSE_VALUES)[number];
 export const ACCOUNT_TYPES = [
   "checking",
   "credit_card",
-  "debit_card",
   "savings",
   "cash",
   "investment",
@@ -55,8 +54,6 @@ export const DEFAULT_ACCOUNTS: {
 }[] = [
   { name: "BofA Checking", bank: "BofA", type: "checking", is_credit: false },
   { name: "BofA Credit Card", bank: "BofA", type: "credit_card", is_credit: true },
-  { name: "BofA Debit Card", bank: "BofA", type: "debit_card", is_credit: false },
   { name: "Chase Checking", bank: "Chase", type: "checking", is_credit: false },
   { name: "Chase Credit Card", bank: "Chase", type: "credit_card", is_credit: true },
-  { name: "Chase Debit Card", bank: "Chase", type: "debit_card", is_credit: false },
 ];

@@ -29,7 +29,6 @@ import { createAccount, updateAccount, type AccountInput } from "./actions";
 const TYPE_LABELS: Record<AccountType, string> = {
   checking: "Checking",
   credit_card: "Credit card",
-  debit_card: "Debit card",
   savings: "Savings",
   cash: "Cash",
   investment: "Investment",
