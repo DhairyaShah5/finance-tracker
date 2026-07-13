@@ -558,11 +558,16 @@ export function monthlyBudgetStatus(
   };
 }
 
-/** Monthly income (counted = paycheck inflows) keyed by month. */
+/**
+ * Monthly income keyed by month - every inflow that stayed yours (paychecks +
+ * the arrival capital). Refunds (categorized inflows) are returned spend, NOT
+ * income, so they're excluded here just like in reconcile() - keeping the
+ * Insights total equal to the Dashboard's income figure.
+ */
 export function incomeByMonth(txns: TransactionRow[]): Map<string, number> {
   const m = new Map<string, number>();
   for (const t of txns) {
-    if (t.direction !== "inflow" || t.is_transfer) continue;
+    if (t.direction !== "inflow" || t.is_transfer || isRefund(t)) continue;
     m.set(monthKey(t.txn_date), round2((m.get(monthKey(t.txn_date)) ?? 0) + t.amount));
   }
   return m;
