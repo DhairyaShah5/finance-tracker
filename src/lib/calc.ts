@@ -574,6 +574,50 @@ export function incomeByMonth(txns: TransactionRow[]): Map<string, number> {
 }
 
 // ---------------------------------------------------------------------------
+// Monthly cash flow - surplus / deficit per month. Same decomposition as
+// reconcile(), sliced by month:
+//   earned income − living expenses − investments = net cash flow
+// Arrival capital is EXCLUDED - it's one-time starting funds, not monthly
+// income, and counting it would make the arrival month a huge outlier. Refunds
+// net against living expenses (never income) and transfers are ignored, exactly
+// as everywhere else.
+// ---------------------------------------------------------------------------
+export interface MonthlyCashFlow {
+  month: string; // 'YYYY-MM'
+  label: string;
+  income: number; // earned income that stayed yours (paychecks; arrival excluded)
+  expenses: number; // living expenses = your net share of consumption
+  investments: number; // money set aside (savings / investments)
+  net: number; // income − expenses − investments  (surplus > 0, deficit < 0)
+}
+
+export function monthlyCashFlow(txns: TransactionRow[]): MonthlyCashFlow[] {
+  const by = new Map<string, { income: number; expenses: number; investments: number }>();
+  for (const t of txns) {
+    if (t.is_transfer) continue;
+    const k = monthKey(t.txn_date);
+    const b = by.get(k) ?? { income: 0, expenses: 0, investments: 0 };
+    if (isRefund(t)) {
+      b.expenses -= t.amount; // a return reduces your net living cost, not income
+    } else if (t.direction === "inflow") {
+      if (!isArrivalDeposit(t)) b.income += t.amount; // arrival = starting funds, skip
+    } else if (isSavingsTxn(t)) {
+      b.investments += myAmount(t);
+    } else {
+      b.expenses += myAmount(t);
+    }
+    by.set(k, b);
+  }
+  return [...by.keys()].sort().map((k) => {
+    const b = by.get(k)!;
+    const income = round2(b.income);
+    const expenses = round2(b.expenses);
+    const investments = round2(b.investments);
+    return { month: k, label: monthLabel(k), income, expenses, investments, net: round2(income - expenses - investments) };
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Per-account activity & balances
 // ---------------------------------------------------------------------------
 export interface AccountActivity {

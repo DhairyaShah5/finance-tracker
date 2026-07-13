@@ -6,6 +6,7 @@ import {
   monthlyBudget,
   monthlyBudgetStatus,
   monthlyBalances,
+  monthlyCashFlow,
   categoryTotals,
   accountActivity,
   reconcile,
@@ -28,6 +29,7 @@ import { Badge } from "@/components/ui/badge";
 import { TrendChart, BarSeriesChart } from "@/components/charts";
 import { DonutBreakdown } from "@/components/donut-breakdown";
 import { SpendingTreemap, type TreemapCat } from "@/components/spending-treemap";
+import { CashFlowChart } from "@/components/cash-flow-chart";
 
 export const dynamic = "force-dynamic";
 
@@ -149,6 +151,11 @@ export default async function DashboardPage() {
     Spent: s.totalSpent,
     Budget: s.totalBudget,
   }));
+  // Monthly surplus / deficit: earned income − living expenses − investments.
+  // Arrival capital excluded (one-time starting funds), so the bars read as
+  // "did this month's income cover what I spent and set aside?"
+  const cashFlow = monthlyCashFlow(txns).map((m) => ({ ...m, label: m.label.split(" ")[0] }));
+  const surplusMonths = cashFlow.filter((m) => m.net >= 0).length;
   // Spending donut: every category expanded (no "Other" bucket). Refunds are
   // netted into their category, so the donut total, the "Total spent" KPI
   // (recon.spending), and the reconciliation "Spending" line all agree exactly.
@@ -368,6 +375,22 @@ export default async function DashboardPage() {
                     { key: "Budget", name: "Budget", color: "var(--chart-3)" },
                   ]}
                 />
+              </CardContent>
+            </Card>
+          </Reveal>
+
+          {/* Monthly surplus / deficit (net cash flow) */}
+          <Reveal delay={390}>
+            <Card className="surface">
+              <CardHeader>
+                <CardTitle>Monthly surplus / deficit</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Earned income minus living expenses and investments · surplus in {surplusMonths} of {cashFlow.length} months.
+                  Arrival capital excluded as one-time starting funds.
+                </p>
+              </CardHeader>
+              <CardContent>
+                <CashFlowChart data={cashFlow} />
               </CardContent>
             </Card>
           </Reveal>
