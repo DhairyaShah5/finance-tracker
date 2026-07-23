@@ -27,6 +27,7 @@ import {
   sumOwed,
 } from "@/lib/calc";
 import { fmtDate, monthKey, monthLabel, todayISO } from "@/lib/format";
+import { donutSVG, barsSVG, lineSVG, stackedBarsSVG, hBarsSVG, svgToPng, chartColor } from "@/lib/charts";
 
 /** Everything the export needs - the raw rows behind every page. */
 export interface ExportData {
@@ -240,6 +241,80 @@ function buildOverview(
   if (sources.length) {
     section("Income by source");
     for (const [label, total] of sources) kv(label, total);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Charts - a visual dashboard (rasterized SVG images, since exceljs can't embed
+// native charts). Every figure here also lives in the data tabs.
+// ----------------------------------------------------------------------------
+async function buildChartsSheet(wb: ExcelJS.Workbook, data: ExportData, netWorth: number) {
+  const ws = wb.addWorksheet("Charts", { properties: { tabColor: { argb: "FF7C3AED" } } });
+  ws.getColumn(1).width = 2;
+
+  ws.mergeCells("A1:M1");
+  const title = ws.getCell("A1");
+  title.value = "Charts";
+  title.font = { bold: true, size: 18, color: { argb: BRAND } };
+  ws.getRow(1).height = 26;
+
+  // 1. Net worth over time (closing available-funds per month).
+  const nwIds = new Set(data.accounts.filter((a) => a.include_in_net_worth).map((a) => a.id));
+  const balances = monthlyBalances(data.transactions, nwIds, netWorth);
+  const nwPoints = [...balances.keys()].sort().map((k) => ({ label: monthLabel(k).split(" ")[0], value: balances.get(k)!.closing }));
+
+  // 2. Monthly surplus / deficit.
+  const cfBars = monthlyCashFlow(data.transactions).map((m) => ({ label: m.label.split(" ")[0], value: m.net }));
+
+  // 3. Spending by category (top 8 + Other).
+  const cats = categoryTotals(data.transactions, data.categories).filter((c) => c.total > 0);
+  const donut = cats.slice(0, 8).map((c, i) => ({ label: c.name, value: c.total, color: chartColor(i) }));
+  const otherTotal = r2(cats.slice(8).reduce((s, c) => s + c.total, 0));
+  if (otherTotal > 0) donut.push({ label: "Other", value: otherTotal, color: "#94A3B8" });
+
+  // 4. 50 / 30 / 20 by month.
+  const legend503020 = [
+    { label: "Needs", color: "#4F46E5" },
+    { label: "Wants", color: "#F59E0B" },
+    { label: "Savings", color: "#10B981" },
+    { label: "Unclassified", color: "#94A3B8" },
+  ];
+  const stacked = budgetGroupsByMonth(data.transactions).map((g) => ({
+    label: g.label.split(" ")[0],
+    segments: [g.needs, g.wants, g.savings, g.unclassified],
+  }));
+
+  // 5. Income by source (mirrors the Overview breakdown).
+  const inflowName = new Map(data.inflowTypes.map((i) => [i.id, i.name]));
+  const agg = new Map<string, number>();
+  for (const t of data.transactions) {
+    if (t.direction !== "inflow" || t.is_transfer || t.category_id) continue;
+    const label = isArrivalDeposit(t)
+      ? "Arrival capital"
+      : t.inflow_type_id
+        ? inflowName.get(t.inflow_type_id) ?? "Other"
+        : "Other";
+    agg.set(label, r2((agg.get(label) ?? 0) + t.amount));
+  }
+  const incomeBars = [...agg.entries()].sort((a, b) => b[1] - a[1]).map(([label, value], i) => ({ label, value, color: chartColor(i) }));
+
+  const charts: { title: string; svg: string }[] = [];
+  if (nwPoints.length) charts.push({ title: "Net worth over time", svg: lineSVG(nwPoints) });
+  if (cfBars.length) charts.push({ title: "Monthly surplus / deficit", svg: barsSVG(cfBars, { diverging: true }) });
+  if (donut.length) charts.push({ title: "Spending by category", svg: donutSVG(donut, "Spent") });
+  if (stacked.length) charts.push({ title: "50 / 30 / 20 spending by month", svg: stackedBarsSVG(stacked, legend503020) });
+  if (incomeBars.length) charts.push({ title: "Income by source", svg: hBarsSVG(incomeBars) });
+
+  const DISPLAY_W = 720, DISPLAY_H = 360, ROWS_PER = 20;
+  let titleRow = 3; // 1-based
+  for (const c of charts) {
+    const cell = ws.getCell(titleRow, 2);
+    cell.value = c.title;
+    cell.font = { bold: true, size: 13, color: { argb: INK } };
+    const png = await svgToPng(c.svg);
+    const id = wb.addImage({ buffer: png as unknown as ExcelJS.Buffer, extension: "png" });
+    ws.addImage(id, { tl: { col: 1, row: titleRow }, ext: { width: DISPLAY_W, height: DISPLAY_H } });
+    titleRow += ROWS_PER;
   }
 }
 
@@ -672,6 +747,7 @@ export async function buildWorkbook(data: ExportData): Promise<Buffer> {
   );
 
   buildOverview(wb, data, netWorth);
+  await buildChartsSheet(wb, data, netWorth);
   buildTransactions(wb, data);
   buildMonthlySummary(wb, data, netWorth);
   buildCategories(wb, data);

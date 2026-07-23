@@ -1,9 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // exceljs uses Node built-ins and dynamic requires - keep it out of the bundle
-  // and load it from node_modules at runtime (the Vercel-safe treatment).
-  serverExternalPackages: ["exceljs"],
+  // exceljs (dynamic requires) and sharp (native binary) must load from
+  // node_modules at runtime rather than being bundled - the Vercel-safe treatment.
+  serverExternalPackages: ["exceljs", "sharp"],
 };
 
 export default nextConfig;
