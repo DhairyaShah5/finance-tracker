@@ -248,7 +248,7 @@ function buildOverview(
 // Charts - a visual dashboard (rasterized SVG images, since exceljs can't embed
 // native charts). Every figure here also lives in the data tabs.
 // ----------------------------------------------------------------------------
-async function buildChartsSheet(wb: ExcelJS.Workbook, data: ExportData, netWorth: number) {
+function buildChartsSheet(wb: ExcelJS.Workbook, data: ExportData, netWorth: number) {
   const ws = wb.addWorksheet("Charts", { properties: { tabColor: { argb: "FF7C3AED" } } });
   ws.getColumn(1).width = 2;
 
@@ -311,7 +311,7 @@ async function buildChartsSheet(wb: ExcelJS.Workbook, data: ExportData, netWorth
     const cell = ws.getCell(titleRow, 2);
     cell.value = c.title;
     cell.font = { bold: true, size: 13, color: { argb: INK } };
-    const png = await svgToPng(c.svg);
+    const png = svgToPng(c.svg);
     const id = wb.addImage({ buffer: png as unknown as ExcelJS.Buffer, extension: "png" });
     ws.addImage(id, { tl: { col: 1, row: titleRow }, ext: { width: DISPLAY_W, height: DISPLAY_H } });
     titleRow += ROWS_PER;
@@ -747,7 +747,7 @@ export async function buildWorkbook(data: ExportData): Promise<Buffer> {
   );
 
   buildOverview(wb, data, netWorth);
-  await buildChartsSheet(wb, data, netWorth);
+  buildChartsSheet(wb, data, netWorth);
   buildTransactions(wb, data);
   buildMonthlySummary(wb, data, netWorth);
   buildCategories(wb, data);

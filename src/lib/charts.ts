@@ -1,5 +1,9 @@
 import "server-only";
-import sharp from "sharp";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Resvg } from "@resvg/resvg-js";
+import { ROBOTO_REGULAR_B64, ROBOTO_BOLD_B64 } from "@/lib/fonts/roboto";
 
 // Server-side chart rendering for the Excel export. Charts are hand-built SVG in
 // the app's Aurora palette, then rasterized to PNG (exceljs can only embed images,
@@ -21,7 +25,7 @@ const NEG = "#DC2626";
 const INK = "#0F172A";
 const MUTED = "#64748B";
 const GRID = "#E2E8F0";
-const FONT = "Arial, Helvetica, sans-serif";
+const FONT = "Roboto";
 
 export const chartColor = (i: number) => SERIES[i % SERIES.length];
 
@@ -56,8 +60,27 @@ function wrap(body: string) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W * SCALE}" height="${H * SCALE}" viewBox="0 0 ${W} ${H}">` +
     `<rect width="${W}" height="${H}" fill="#ffffff"/>${body}</svg>`;
 }
-export async function svgToPng(svg: string): Promise<Buffer> {
-  return sharp(Buffer.from(svg)).png().toBuffer();
+// resvg loads fonts by file path, so materialize the embedded Roboto to a temp
+// file once (cached). Bundled font + loadSystemFonts:false => rendering is
+// identical everywhere (Vercel has no system fonts), so labels can never silently
+// drop again - the /tmp dir is writable in the serverless runtime.
+let fontFilesCache: string[] | null = null;
+function fontFiles(): string[] {
+  if (fontFilesCache) return fontFilesCache;
+  const dir = join(tmpdir(), "finance-tracker-fonts");
+  mkdirSync(dir, { recursive: true });
+  const reg = join(dir, "roboto-regular.ttf");
+  const bold = join(dir, "roboto-bold.ttf");
+  if (!existsSync(reg)) writeFileSync(reg, Buffer.from(ROBOTO_REGULAR_B64, "base64"));
+  if (!existsSync(bold)) writeFileSync(bold, Buffer.from(ROBOTO_BOLD_B64, "base64"));
+  fontFilesCache = [reg, bold];
+  return fontFilesCache;
+}
+export function svgToPng(svg: string): Buffer {
+  const resvg = new Resvg(svg, {
+    font: { fontFiles: fontFiles(), loadSystemFonts: false, defaultFontFamily: "Roboto" },
+  });
+  return Buffer.from(resvg.render().asPng());
 }
 
 // --- Donut with legend -------------------------------------------------------
