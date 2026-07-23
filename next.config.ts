@@ -1,9 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // exceljs (dynamic requires) and @resvg/resvg-js (native binary) must load from
-  // node_modules at runtime rather than being bundled - the Vercel-safe treatment.
-  serverExternalPackages: ["exceljs", "@resvg/resvg-js"],
+  // exceljs uses dynamic requires - keep it out of the bundle and load it from
+  // node_modules at runtime (the Vercel-safe treatment).
+  serverExternalPackages: ["exceljs"],
 };
 
 export default nextConfig;
