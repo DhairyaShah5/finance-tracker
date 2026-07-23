@@ -19,6 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { ExportButton } from "@/components/export-button";
 import { cn } from "@/lib/utils";
 import * as React from "react";
 
@@ -119,7 +120,10 @@ function SidebarFooter({ email, readOnly }: { email: string; readOnly?: boolean 
           </Link>
         </Button>
       ) : (
-        <SignOutButton />
+        <>
+          <ExportButton />
+          <SignOutButton />
+        </>
       )}
     </div>
   );
