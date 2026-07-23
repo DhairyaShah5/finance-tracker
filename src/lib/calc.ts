@@ -440,6 +440,25 @@ export function monthlyBudgetStatus(
     if (t.is_transfer) continue;
     const m = monthKey(t.txn_date);
     if (t.direction === "inflow") {
+      // Refunds (categorized inflows) are returned spend: net them against the
+      // category so budgets reflect NET cost, exactly like categoryTotals and
+      // reconcile. They are not income.
+      if (isRefund(t)) {
+        const key = t.category_id!; // isRefund guarantees a category
+        if (m === month) {
+          totalSpent = round2(totalSpent - t.amount);
+          spentThis.set(key, round2((spentThis.get(key) ?? 0) - t.amount));
+        } else {
+          allMonths.add(m);
+          let mm = byCatMonth.get(key);
+          if (!mm) {
+            mm = new Map();
+            byCatMonth.set(key, mm);
+          }
+          mm.set(m, round2((mm.get(m) ?? 0) - t.amount));
+        }
+        continue;
+      }
       if (m !== month && !isArrivalDeposit(t)) {
         incomeByM.set(m, round2((incomeByM.get(m) ?? 0) + t.amount));
       }
