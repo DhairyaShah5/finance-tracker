@@ -19,6 +19,7 @@ import {
   Receipt,
   Search,
   Trash2,
+  Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,6 +48,7 @@ import type { TransactionRow } from "@/lib/database.types";
 import { useReadOnly } from "@/components/read-only-context";
 import { TransactionDialog, type TxnLookups } from "./transaction-dialog";
 import { ReimburseDialog } from "./reimburse-dialog";
+import { SettleSplitDialog } from "./settle-split-dialog";
 import { deleteTransaction, setTransactionTransfer, settleReimbursement } from "./actions";
 
 const VIEW_ONLY = "View only - sign in to make changes.";
@@ -81,6 +83,8 @@ export function TransactionsView({
   const [editing, setEditing] = React.useState<TransactionRow | null>(null);
   const [reimburseOpen, setReimburseOpen] = React.useState(false);
   const [reimbursing, setReimbursing] = React.useState<TransactionRow | null>(null);
+  const [settleSplitOpen, setSettleSplitOpen] = React.useState(false);
+  const [settlingSplit, setSettlingSplit] = React.useState<TransactionRow | null>(null);
   // Current month starts expanded; other months collapsed.
   const [expanded, setExpanded] = React.useState<Set<string>>(() => new Set([CURRENT_MONTH]));
 
@@ -169,6 +173,11 @@ export function TransactionsView({
     if (readOnly) return void toast.info(VIEW_ONLY);
     setReimbursing(t);
     setReimburseOpen(true);
+  }
+  function onSettleSplit(t: TransactionRow) {
+    if (readOnly) return void toast.info(VIEW_ONLY);
+    setSettlingSplit(t);
+    setSettleSplitOpen(true);
   }
   function onSettle(t: TransactionRow, outstanding: number) {
     if (readOnly) return void toast.info(VIEW_ONLY);
@@ -342,6 +351,11 @@ export function TransactionsView({
                 <Ban className="size-4" /> Write off {fmtMoney(outstanding, { cents: true })} as spent
               </DropdownMenuItem>
             ) : null}
+            {!t.is_transfer && t.direction === "outflow" && !t.reimbursable && myAmount(t) > 0.005 ? (
+              <DropdownMenuItem onClick={() => onSettleSplit(t)}>
+                <Users className="size-4" /> Settle a split
+              </DropdownMenuItem>
+            ) : null}
             <DropdownMenuItem onClick={() => onToggleTransfer(t)}>
               {t.is_transfer ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
               {t.is_transfer ? "Include in totals" : "Exclude from totals"}
@@ -508,6 +522,12 @@ export function TransactionsView({
         open={reimburseOpen}
         onOpenChange={setReimburseOpen}
         transaction={reimbursing}
+        accounts={lookups.accounts}
+      />
+      <SettleSplitDialog
+        open={settleSplitOpen}
+        onOpenChange={setSettleSplitOpen}
+        transaction={settlingSplit}
         accounts={lookups.accounts}
       />
     </div>

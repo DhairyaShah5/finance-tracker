@@ -122,8 +122,7 @@ export async function deleteTransaction(id: string): Promise<ActionResult> {
   if (error) return { ok: false, error: error.message };
 
   if (row?.reimburses_id) {
-    // Deleting a reimbursement returns the money to "still owed": subtract it
-    // from the expense's reimbursed_amount and clear the fully-paid flag.
+    // This inflow was linked to a parent expense - reverse whichever effect it had.
     const { data: parent } = await supabase
       .from("transactions")
       .select("amount, whose_expense, split_count, my_share, reimbursable, direction, is_transfer, reimbursed_amount")
@@ -131,13 +130,26 @@ export async function deleteTransaction(id: string): Promise<ActionResult> {
       .eq("user_id", user.id)
       .single();
     if (parent) {
-      const owed = round2(parent.amount - myAmount(parent));
-      const newTotal = round2(Math.max(0, (parent.reimbursed_amount ?? 0) - row.amount));
-      await supabase
-        .from("transactions")
-        .update({ reimbursed_amount: newTotal, reimbursed: newTotal >= owed - 0.005 })
-        .eq("id", row.reimburses_id)
-        .eq("user_id", user.id);
+      if (parent.reimbursable) {
+        // Reimbursement: return the money to "still owed" - subtract it from the
+        // expense's reimbursed_amount and clear the fully-paid flag.
+        const owed = round2(parent.amount - myAmount(parent));
+        const newTotal = round2(Math.max(0, (parent.reimbursed_amount ?? 0) - row.amount));
+        await supabase
+          .from("transactions")
+          .update({ reimbursed_amount: newTotal, reimbursed: newTotal >= owed - 0.005 })
+          .eq("id", row.reimburses_id)
+          .eq("user_id", user.id);
+      } else {
+        // Split settlement: it lowered your share of the expense by its amount, so
+        // deleting it restores that share (keeps the ledger reconciled).
+        const restored = round2(Math.min(parent.amount, myAmount(parent) + row.amount));
+        await supabase
+          .from("transactions")
+          .update({ my_share: restored })
+          .eq("id", row.reimburses_id)
+          .eq("user_id", user.id);
+      }
     }
   }
 
@@ -280,6 +292,84 @@ export async function settleReimbursement(id: string): Promise<ActionResult> {
     .from("transactions")
     .update({ my_share: newMyShare, reimbursed: true })
     .eq("id", id)
+    .eq("user_id", user.id);
+  if (updErr) return { ok: false, error: updErr.message };
+
+  revalidate();
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Settle a split - someone paid you back their share of an expense you fronted
+// (typically settling up on Splitwise). Records the money landing in one of your
+// accounts as an EXCLUDED inflow (raises your balance, but is NOT income) AND
+// lowers your share of the expense by the same amount, so your spending reflects
+// only your true portion. Reducing consumption by $X while balance rises by $X
+// keeps the reconciliation identity balanced. The inflow links back to the
+// expense (reimburses_id) so deleting it restores the share (see deleteTransaction).
+// ---------------------------------------------------------------------------
+const settleSplitSchema = z.object({
+  transaction_id: z.string().uuid(),
+  account_id: z.string().uuid("Pick an account."),
+  amount: z.coerce.number().positive("Amount must be greater than 0."),
+  txn_date: z.string().min(10),
+  description: z.string().trim().nullable().optional(),
+});
+
+export type SettleSplitInput = z.input<typeof settleSplitSchema>;
+
+export async function settleSplit(input: SettleSplitInput): Promise<ActionResult> {
+  const parsed = settleSplitSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
+  const { supabase, user } = await authed();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const d = parsed.data;
+
+  const { data: txn, error: tErr } = await supabase
+    .from("transactions")
+    .select("*")
+    .eq("id", d.transaction_id)
+    .eq("user_id", user.id)
+    .single();
+  if (tErr || !txn) return { ok: false, error: "Transaction not found." };
+  if (txn.is_transfer || txn.direction !== "outflow")
+    return { ok: false, error: "You can only settle a split on an expense." };
+  if (txn.reimbursable)
+    return { ok: false, error: "That expense is reimbursable - use Record reimbursement instead." };
+
+  const share = myAmount(txn); // what currently counts as your spending
+  if (share <= 0) return { ok: false, error: "This expense isn't counted as your spending." };
+
+  const back = round2(d.amount);
+  if (back <= 0) return { ok: false, error: "Enter an amount to settle." };
+  if (back > share + 0.005)
+    return {
+      ok: false,
+      error: `You can settle at most ${share.toFixed(2)} here - your current share. Anything beyond that is fronted money, not part of your share.`,
+    };
+
+  // Record the money arriving - excluded from income, raises your balance.
+  const row: TxnInsert = {
+    user_id: user.id,
+    txn_date: d.txn_date,
+    account_id: d.account_id,
+    amount: back,
+    direction: "inflow",
+    is_transfer: true,
+    description: d.description?.trim() || `Split settled: ${txn.description}`,
+    reimburses_id: txn.id, // link back so deleting this restores your share
+    notes: `Split settlement for "${txn.description}" (${back.toFixed(2)}). Your share reduced accordingly.`,
+  };
+  const { error: insErr } = await supabase.from("transactions").insert(row);
+  if (insErr) return { ok: false, error: insErr.message };
+
+  // Lower your share by the recovered amount - consumption drops by exactly `back`,
+  // matching the inflow, so the reconciliation stays balanced.
+  const newMyShare = round2(Math.max(0, share - back));
+  const { error: updErr } = await supabase
+    .from("transactions")
+    .update({ my_share: newMyShare })
+    .eq("id", txn.id)
     .eq("user_id", user.id);
   if (updErr) return { ok: false, error: updErr.message };
 
