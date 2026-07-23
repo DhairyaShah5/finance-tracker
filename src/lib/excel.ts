@@ -27,14 +27,6 @@ import {
   sumOwed,
 } from "@/lib/calc";
 import { fmtDate, monthKey, monthLabel, todayISO } from "@/lib/format";
-import { injectCharts, type ChartSpec } from "@/lib/xlsx-charts";
-
-// Chart series palette (hex, no '#'), matching the app's Aurora tokens.
-const CHART_PALETTE = [
-  "4F46E5", "7C3AED", "06B6D4", "0EA5E9", "10B981", "F59E0B",
-  "EC4899", "8B5CF6", "14B8A6", "F97316", "6366F1", "84CC16",
-];
-const chartColor = (i: number) => CHART_PALETTE[i % CHART_PALETTE.length];
 
 /** Everything the export needs - the raw rows behind every page. */
 export interface ExportData {
@@ -248,143 +240,6 @@ function buildOverview(
   if (sources.length) {
     section("Income by source");
     for (const [label, total] of sources) kv(label, total);
-  }
-}
-
-// ----------------------------------------------------------------------------
-// Charts - NATIVE, interactive Excel charts. The chart data lives in a hidden
-// "Chart data" sheet; the charts (spliced into the zip by injectCharts) point at
-// those cells, so they're real editable Excel charts, not pictures. Rendering
-// and labels are Excel's own - no font/rasterization concerns.
-// ----------------------------------------------------------------------------
-const SD = "'Chart data'!";
-const CHART_W = 720;
-const CHART_H = 360;
-const CHART_GAP = 20; // rows between stacked charts
-
-interface PreparedCharts {
-  specs: ChartSpec[];
-  fill: (ws: ExcelJS.Worksheet) => void;
-  titles: { row: number; text: string }[];
-}
-
-function prepareCharts(data: ExportData, netWorth: number): PreparedCharts {
-  const money = "$#,##0";
-
-  // Datasets ------------------------------------------------------------------
-  const nwIds = new Set(data.accounts.filter((a) => a.include_in_net_worth).map((a) => a.id));
-  const balances = monthlyBalances(data.transactions, nwIds, netWorth);
-  const nw = [...balances.keys()].sort().map((k) => ({ label: monthLabel(k).split(" ")[0], value: balances.get(k)!.closing }));
-
-  const cf = monthlyCashFlow(data.transactions).map((m) => ({ label: m.label.split(" ")[0], value: m.net }));
-
-  const catsAll = categoryTotals(data.transactions, data.categories).filter((c) => c.total > 0);
-  const cat = catsAll.slice(0, 8).map((c, i) => ({ label: c.name, value: c.total, color: chartColor(i) }));
-  const otherTotal = r2(catsAll.slice(8).reduce((s, c) => s + c.total, 0));
-  if (otherTotal > 0) cat.push({ label: "Other", value: otherTotal, color: "94A3B8" });
-
-  const groups = budgetGroupsByMonth(data.transactions).map((g) => ({
-    label: g.label.split(" ")[0], needs: g.needs, wants: g.wants, savings: g.savings, unclassified: g.unclassified,
-  }));
-
-  const inflowName = new Map(data.inflowTypes.map((i) => [i.id, i.name]));
-  const agg = new Map<string, number>();
-  for (const t of data.transactions) {
-    if (t.direction !== "inflow" || t.is_transfer || t.category_id) continue;
-    const label = isArrivalDeposit(t) ? "Arrival capital" : t.inflow_type_id ? inflowName.get(t.inflow_type_id) ?? "Other" : "Other";
-    agg.set(label, r2((agg.get(label) ?? 0) + t.amount));
-  }
-  const income = [...agg.entries()].sort((a, b) => b[1] - a[1]).map(([label, value], i) => ({ label, value, color: chartColor(i) }));
-
-  const range = (col: string, n: number) => `${SD}$${col}$2:$${col}$${1 + n}`;
-  const head = (col: string) => `${SD}$${col}$1`;
-
-  // fill(): writes headers + data columns (money-formatted so chart labels show $).
-  const fill = (ws: ExcelJS.Worksheet) => {
-    const put = (r: number, c: number, v: string | number, fmt?: string) => {
-      const cell = ws.getCell(r, c);
-      cell.value = v;
-      if (fmt) cell.numFmt = fmt;
-    };
-    put(1, 1, "Month"); put(1, 2, "Net worth");
-    put(1, 4, "Month"); put(1, 5, "Net cash flow");
-    put(1, 7, "Category"); put(1, 8, "Spending");
-    put(1, 10, "Month"); put(1, 11, "Needs"); put(1, 12, "Wants"); put(1, 13, "Savings"); put(1, 14, "Unclassified");
-    put(1, 16, "Source"); put(1, 17, "Income");
-    nw.forEach((d, i) => { put(2 + i, 1, d.label); put(2 + i, 2, d.value, money); });
-    cf.forEach((d, i) => { put(2 + i, 4, d.label); put(2 + i, 5, d.value, money); });
-    cat.forEach((d, i) => { put(2 + i, 7, d.label); put(2 + i, 8, d.value, money); });
-    groups.forEach((d, i) => { put(2 + i, 10, d.label); put(2 + i, 11, d.needs, money); put(2 + i, 12, d.wants, money); put(2 + i, 13, d.savings, money); put(2 + i, 14, d.unclassified, money); });
-    income.forEach((d, i) => { put(2 + i, 16, d.label); put(2 + i, 17, d.value, money); });
-  };
-
-  // Specs. anchorRow (0-based) == the title's 1-based row, so the chart sits one
-  // row below its title.
-  const specs: ChartSpec[] = [];
-  const titles: { row: number; text: string }[] = [];
-  let slot = 0;
-  const place = (text: string) => {
-    const titleRow = 2 + slot * CHART_GAP;
-    titles.push({ row: titleRow, text });
-    slot++;
-    return titleRow;
-  };
-
-  if (nw.length)
-    specs.push({
-      kind: "line", title: "Net worth over time",
-      series: [{ titleRef: head("B"), catRef: range("A", nw.length), valRef: range("B", nw.length), color: "4F46E5" }],
-      anchorCol: 1, anchorRow: place("Net worth over time"), widthPx: CHART_W, heightPx: CHART_H,
-    });
-  if (cf.length)
-    specs.push({
-      kind: "col", title: "Monthly surplus / deficit",
-      series: [{ titleRef: head("E"), catRef: range("D", cf.length), valRef: range("E", cf.length) }],
-      pointColors: cf.map((d) => (d.value >= 0 ? "16A34A" : "DC2626")), showVal: true,
-      anchorCol: 1, anchorRow: place("Monthly surplus / deficit"), widthPx: CHART_W, heightPx: CHART_H,
-    });
-  if (cat.length)
-    specs.push({
-      kind: "doughnut", title: "Spending by category",
-      series: [{ titleRef: head("H"), catRef: range("G", cat.length), valRef: range("H", cat.length) }],
-      pointColors: cat.map((c) => c.color), showPercent: true,
-      anchorCol: 1, anchorRow: place("Spending by category"), widthPx: CHART_W, heightPx: CHART_H,
-    });
-  if (groups.length)
-    specs.push({
-      kind: "colStacked", title: "50 / 30 / 20 spending by month",
-      series: [
-        { titleRef: head("K"), catRef: range("J", groups.length), valRef: range("K", groups.length), color: "4F46E5" },
-        { titleRef: head("L"), catRef: range("J", groups.length), valRef: range("L", groups.length), color: "F59E0B" },
-        { titleRef: head("M"), catRef: range("J", groups.length), valRef: range("M", groups.length), color: "10B981" },
-        { titleRef: head("N"), catRef: range("J", groups.length), valRef: range("N", groups.length), color: "94A3B8" },
-      ],
-      anchorCol: 1, anchorRow: place("50 / 30 / 20 spending by month"), widthPx: CHART_W, heightPx: CHART_H,
-    });
-  if (income.length)
-    specs.push({
-      kind: "bar", title: "Income by source",
-      series: [{ titleRef: head("Q"), catRef: range("P", income.length), valRef: range("Q", income.length) }],
-      pointColors: income.map((d) => d.color), showVal: true,
-      anchorCol: 1, anchorRow: place("Income by source"), widthPx: CHART_W, heightPx: CHART_H,
-    });
-
-  return { specs, fill, titles };
-}
-
-// The visible "Charts" tab: a header + a title above each (injected) chart frame.
-function addChartsTitles(wb: ExcelJS.Workbook, titles: { row: number; text: string }[]) {
-  const ws = wb.addWorksheet("Charts", { properties: { tabColor: { argb: "FF7C3AED" } } });
-  ws.getColumn(1).width = 2;
-  ws.mergeCells("A1:M1");
-  const title = ws.getCell("A1");
-  title.value = "Charts";
-  title.font = { bold: true, size: 18, color: { argb: BRAND } };
-  ws.getRow(1).height = 26;
-  for (const t of titles) {
-    const cell = ws.getCell(t.row, 2);
-    cell.value = t.text;
-    cell.font = { bold: true, size: 13, color: { argb: INK } };
   }
 }
 
@@ -816,10 +671,7 @@ export async function buildWorkbook(data: ExportData): Promise<Buffer> {
     acct.filter((a) => a.account.include_in_net_worth).reduce((s, a) => s + a.balance, 0),
   );
 
-  const charts = prepareCharts(data, netWorth);
-
   buildOverview(wb, data, netWorth);
-  addChartsTitles(wb, charts.titles);
   buildTransactions(wb, data);
   buildMonthlySummary(wb, data, netWorth);
   buildCategories(wb, data);
@@ -830,11 +682,5 @@ export async function buildWorkbook(data: ExportData): Promise<Buffer> {
   buildDebtors(wb, data);
   buildReference(wb, data);
 
-  // Hidden sheet holding the series the native charts reference.
-  const chartData = wb.addWorksheet("Chart data");
-  chartData.state = "hidden";
-  charts.fill(chartData);
-
-  const buf = Buffer.from(await wb.xlsx.writeBuffer());
-  return injectCharts(buf, "Charts", charts.specs);
+  return Buffer.from(await wb.xlsx.writeBuffer());
 }
