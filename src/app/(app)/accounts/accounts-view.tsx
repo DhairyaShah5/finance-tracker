@@ -277,13 +277,11 @@ export function AccountsView({ activity }: { activity: AccountActivity[] }) {
                           colored={credit || a.balance < 0}
                           className="text-2xl font-semibold"
                         />
-                        <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-                          <span className="tnum">↑ {<Money value={a.inflow} />}</span>
-                          <span className="tnum">↓ {<Money value={a.outflow} />}</span>
-                          {!a.account.include_in_net_worth ? (
+                        {!a.account.include_in_net_worth ? (
+                          <div className="mt-1">
                             <Badge variant="outline" className="text-[10px]">Excluded</Badge>
-                          ) : null}
-                        </div>
+                          </div>
+                        ) : null}
                       </div>
                     </CardContent>
                   </Card>
