@@ -14,19 +14,40 @@ interface Line {
 
 /**
  * Renders the cash identity as a waterfall that closes to the current balance:
- *   Income − Spending − Savings − Net fronted = Available funds.
- * Income includes the arrival capital (your early expenses came out of it).
- * Every dollar is in exactly one row, so it always sums to the bottom line.
+ *   Starting funds + Income − Spending − Savings − Net fronted = Available funds.
+ * Arrival capital is your STARTING funds, not income, so it gets its own row on
+ * the money-in side (Income is only what you earned). Every dollar is in exactly
+ * one row, so it always sums to the bottom line.
  */
 export function ReconciliationFlow({ data }: { data: Reconciliation }) {
+  const hasArrival = data.arrivalCapital > 0;
   const lines: Line[] = [
-    {
-      label: "Income",
-      hint: `Paychecks + the ${fmtMoney(data.arrivalCapital)} you arrived with`,
-      value: data.income,
-      op: "",
-      tone: "positive",
-    },
+    ...(hasArrival
+      ? [
+          {
+            label: "Starting funds",
+            hint: `The ${fmtMoney(data.arrivalCapital)} of capital you arrived with`,
+            value: data.arrivalCapital,
+            op: "" as const,
+            tone: "positive" as const,
+          },
+          {
+            label: "Income",
+            hint: "Paychecks and other income you earned",
+            value: data.income,
+            op: "+" as const,
+            tone: "positive" as const,
+          },
+        ]
+      : [
+          {
+            label: "Income",
+            hint: "Paychecks and other income you earned",
+            value: data.income,
+            op: "" as const,
+            tone: "positive" as const,
+          },
+        ]),
     { label: "Spending", hint: "Your net share of consumption", value: -data.spending, op: "−", tone: "negative" },
     { label: "Savings", hint: "Investments + vault, set aside", value: -data.savings, op: "−", tone: "muted" },
     ...(data.reimbursable > 0

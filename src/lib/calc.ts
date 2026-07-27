@@ -324,8 +324,8 @@ export function budgetGroupsByMonth(txns: TransactionRow[]): MonthGroups[] {
 // Every dollar lands in exactly one bucket, so the waterfall closes to the cent.
 // ---------------------------------------------------------------------------
 export interface Reconciliation {
-  income: number; // every inflow that stayed yours - paychecks + the arrival capital
-  arrivalCapital: number; // the slice of income you arrived with (shown for context)
+  income: number; // earned income that stayed yours - paychecks etc. (arrival excluded)
+  arrivalCapital: number; // the starting funds you arrived with (not income)
   consumption: number; // your NET share of non-savings outflows (== spending == donut)
   settled: number; // unreconciled gap: logged activity vs. actual balances (own line)
   reimbursable: number; // fronted on reimbursable expenses, owed back to you (receivable)
@@ -336,20 +336,22 @@ export interface Reconciliation {
 
 /**
  * Decompose the ledger so the cash identity closes:
- *   income − spending − savings − reimbursable − settled = current balance.
+ *   arrival + income − spending − savings − reimbursable − settled = current balance.
  * `spending` is your NET consumption - the sum of every category's spend, refunds
  * already netted out - so the "Total spent" KPI equals the category donut to the
- * cent. The arrival capital (the money you flew in with) IS income. Refunds /
- * returns (categorized inflows) reduce the category they came from, not income.
- * Money fronted on reimbursable expenses is carried as a receivable
- * (`reimbursable`), not spending. Whatever is left over - the gap between your
- * logged activity and your actual account balances (usually a balance that needs
- * correcting) - is `settled`, shown as its own honest line rather than hidden
- * inside spending.
+ * cent. The arrival capital (the money you flew in with) is your STARTING funds,
+ * NOT income - it's carried in its own `arrivalCapital` bucket on the money-in
+ * side of the identity, so `income` reflects only what you earned (paychecks and
+ * the like). Refunds / returns (categorized inflows) reduce the category they came
+ * from, not income. Money fronted on reimbursable expenses is carried as a
+ * receivable (`reimbursable`), not spending. Whatever is left over - the gap
+ * between your logged activity and your actual account balances (usually a balance
+ * that needs correcting) - is `settled`, shown as its own honest line rather than
+ * hidden inside spending.
  */
 export function reconcile(txns: TransactionRow[], netWorth: number): Reconciliation {
-  let income = 0;
-  let arrivalCapital = 0;
+  let income = 0; // earned income only - paychecks etc. (arrival excluded)
+  let arrivalCapital = 0; // the starting funds you arrived with - NOT income
   let consumption = 0;
   let savings = 0;
   for (const t of txns) {
@@ -357,8 +359,9 @@ export function reconcile(txns: TransactionRow[], netWorth: number): Reconciliat
     if (isRefund(t)) {
       consumption -= t.amount; // returned spend - nets against your consumption, not income
     } else if (t.direction === "inflow") {
-      income += t.amount;
+      // Arrival capital is starting funds, not income - keep it in its own bucket.
       if (isArrivalDeposit(t)) arrivalCapital += t.amount;
+      else income += t.amount;
     } else if (isSavingsTxn(t)) {
       savings += myAmount(t);
     } else {
@@ -374,8 +377,10 @@ export function reconcile(txns: TransactionRow[], netWorth: number): Reconciliat
   // as a receivable, not spending.
   const reimbursable = pendingReimbursements(txns);
   // The leftover informal-settlement residual gets its own line - NOT folded into
-  // spending, so "Total spent" stays equal to the category donut.
-  const settled = round2(income - consumption - savings - currentBalance - reimbursable);
+  // spending, so "Total spent" stays equal to the category donut. Arrival capital
+  // is real money in your accounts (part of net worth), so it sits on the money-in
+  // side of the identity even though it isn't income.
+  const settled = round2(income + arrivalCapital - consumption - savings - currentBalance - reimbursable);
   const spending = consumption;
   return { income, arrivalCapital, consumption, settled, reimbursable, spending, savings, currentBalance };
 }
@@ -578,15 +583,15 @@ export function monthlyBudgetStatus(
 }
 
 /**
- * Monthly income keyed by month - every inflow that stayed yours (paychecks +
- * the arrival capital). Refunds (categorized inflows) are returned spend, NOT
- * income, so they're excluded here just like in reconcile() - keeping the
- * Insights total equal to the Dashboard's income figure.
+ * Monthly earned income keyed by month - paychecks and the like. Arrival capital
+ * is starting funds, not income, so it's excluded (matching reconcile()). Refunds
+ * (categorized inflows) are returned spend, NOT income, so they're excluded too -
+ * keeping the Insights total equal to the Dashboard's income figure.
  */
 export function incomeByMonth(txns: TransactionRow[]): Map<string, number> {
   const m = new Map<string, number>();
   for (const t of txns) {
-    if (t.direction !== "inflow" || t.is_transfer || isRefund(t)) continue;
+    if (t.direction !== "inflow" || t.is_transfer || isRefund(t) || isArrivalDeposit(t)) continue;
     m.set(monthKey(t.txn_date), round2((m.get(monthKey(t.txn_date)) ?? 0) + t.amount));
   }
   return m;

@@ -63,7 +63,8 @@ export default async function DashboardPage() {
   const owed = sumOwed(debtors);
 
   // Full reconciliation - every dollar in exactly one bucket:
-  // income (incl. arrival capital) − spending − savings − net-fronted = net worth.
+  // arrival + income − spending − savings − net-fronted = net worth. Arrival
+  // capital is starting funds, not income, so it sits in its own bucket.
   const recon = reconcile(txns, netWorth);
   const totalWealth = netWorth + recon.savings; // spendable + what's set aside
   // Everything owed back to you: manually-tracked debtors + money fronted on
@@ -90,18 +91,16 @@ export default async function DashboardPage() {
         ? `${owedDebtors.length} debtor${owedDebtors.length === 1 ? "" : "s"}`
         : "All settled";
 
-  // Income split by source (arrival + each paycheck/inflow type) for the modal.
-  // Sums to recon.income and grows automatically as new income lands.
+  // Income split by source (each paycheck / inflow type) for the modal. Arrival
+  // capital is starting funds, not income, so it's left out here just like in
+  // recon.income - the sources sum to recon.income and grow as new income lands.
   const inflowName = new Map(inflowTypes.map((i) => [i.id, i.name]));
   const incomeAgg = new Map<string, { total: number; count: number }>();
   for (const t of txns) {
     if (t.direction !== "inflow" || t.is_transfer) continue;
     if (t.category_id) continue; // categorized inflow = refund/return, not income
-    const label = isArrivalDeposit(t)
-      ? "Arrival capital"
-      : t.inflow_type_id
-        ? inflowName.get(t.inflow_type_id) ?? "Other"
-        : "Other";
+    if (isArrivalDeposit(t)) continue; // arrival capital = starting funds, not income
+    const label = t.inflow_type_id ? inflowName.get(t.inflow_type_id) ?? "Other" : "Other";
     const cur = incomeAgg.get(label) ?? { total: 0, count: 0 };
     cur.total += t.amount;
     cur.count += 1;
@@ -126,11 +125,12 @@ export default async function DashboardPage() {
   });
 
   // Chart series - the exact monthly closing balances, so the line always matches
-  // the month table. "Start" is the balance going into the first tracked month.
-  const balanceSeries = [
-    { label: "Start", balance: balancesByMonth[0]?.opening ?? settings.starting_funds },
-    ...balancesByMonth.map((b) => ({ label: b.label.split(" ")[0], balance: b.closing })),
-  ];
+  // the month table. The first tracked month is the starting point (no separate
+  // "Start" node - the arrival month already carries the opening capital).
+  const balanceSeries = balancesByMonth.map((b) => ({
+    label: b.label.split(" ")[0],
+    balance: b.closing,
+  }));
   // Budget bar chart uses the same income-anchored engine as the Budget page,
   // so the two always agree (typical spend + headroom, allocated per month).
   const runwayFloor = settings.budget_months > 0 ? settings.starting_funds / settings.budget_months : 0;

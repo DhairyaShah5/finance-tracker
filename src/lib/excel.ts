@@ -215,8 +215,12 @@ function buildOverview(
   row++;
 
   section("How your balance adds up");
-  kv("Income", recon.income);
-  kv("   of which arrival capital", recon.arrivalCapital);
+  if (recon.arrivalCapital > 0) {
+    kv("Starting funds (arrival capital)", recon.arrivalCapital);
+    kv("+ Income (earned)", recon.income);
+  } else {
+    kv("Income (earned)", recon.income);
+  }
   kv("− Spending", recon.spending);
   kv("− Saved / invested", recon.savings);
   kv("− Owed back (reimbursable)", recon.reimbursable);
@@ -224,16 +228,14 @@ function buildOverview(
   kv("= Net worth", recon.currentBalance, { bold: true });
   row++;
 
-  // Income by source - mirrors the Dashboard income breakdown modal.
+  // Income by source - mirrors the Dashboard income breakdown modal. Arrival
+  // capital is starting funds, not income, so it's excluded here too.
   const inflowName = new Map(data.inflowTypes.map((i) => [i.id, i.name]));
   const agg = new Map<string, number>();
   for (const t of data.transactions) {
     if (t.direction !== "inflow" || t.is_transfer || t.category_id) continue;
-    const label = isArrivalDeposit(t)
-      ? "Arrival capital"
-      : t.inflow_type_id
-        ? inflowName.get(t.inflow_type_id) ?? "Other"
-        : "Other";
+    if (isArrivalDeposit(t)) continue; // starting funds, not income
+    const label = t.inflow_type_id ? inflowName.get(t.inflow_type_id) ?? "Other" : "Other";
     agg.set(label, r2((agg.get(label) ?? 0) + t.amount));
   }
   const sources = [...agg.entries()].sort((a, b) => b[1] - a[1]);

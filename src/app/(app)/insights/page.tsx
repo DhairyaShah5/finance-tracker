@@ -144,7 +144,7 @@ export default async function InsightsPage() {
 
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <StatCard label="Avg monthly spend" value={<Money value={avgSpend} />} hint={`Over ${months.length} months · excl. savings`} />
-            <StatCard label="Total income" value={<Money value={totalIncome} />} hint="Arrival + Paychecks" accent="positive" />
+            <StatCard label="Total income" value={<Money value={totalIncome} />} hint="Earned · excl. arrival" accent="positive" />
             <StatCard label="Total saved" value={<Money value={totals.savings} />} hint="Investments + vault" accent="positive" />
             <StatCard label="Total spent" value={<Money value={totals.needs + totals.wants + totals.unclassified} />} hint="Excl. savings" />
           </div>

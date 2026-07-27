@@ -28,7 +28,7 @@ export function IncomeCard({ income, sources }: { income: number; sources: Incom
       <StatCard
         label="Total income"
         value={<CountUp value={income} cents />}
-        hint="Arrival + Paychecks · view split"
+        hint="Paychecks & income · view split"
         accent="positive"
         icon={<TrendingUp />}
         iconClassName="bg-positive"
