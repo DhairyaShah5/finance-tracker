@@ -646,8 +646,8 @@ export function monthlyCashFlow(txns: TransactionRow[]): MonthlyCashFlow[] {
 // ---------------------------------------------------------------------------
 export interface AccountActivity {
   account: AccountRow;
-  inflow: number;
-  outflow: number;
+  inflow: number; // every credit on the account (transfers + linked deposits included)
+  outflow: number; // every debit on the account (transfers included)
   net: number; // inflow − outflow
   balance: number; // opening_balance + net
 }
@@ -660,12 +660,13 @@ export function accountActivity(
   const agg = new Map<string, { inflow: number; outflow: number; delta: number }>();
   for (const t of txns) {
     const cur = agg.get(t.account_id) ?? { inflow: 0, outflow: 0, delta: 0 };
-    cur.delta += signed(t); // every movement (incl. transfers) affects the balance
-    if (!t.is_transfer) {
-      // in/out activity excludes transfers (they aren't income/spending)
-      if (t.direction === "inflow") cur.inflow += t.amount;
-      else cur.outflow += t.amount;
-    }
+    // A per-account view is a bank statement: every credit and debit on the
+    // account counts - transfers included - so opening_balance + inflow − outflow
+    // = balance for each account. (Income vs. spending, which excludes transfers,
+    // lives in reconcile()/monthlyCashFlow(), not here.)
+    cur.delta += signed(t);
+    if (t.direction === "inflow") cur.inflow += t.amount;
+    else cur.outflow += t.amount;
     agg.set(t.account_id, cur);
   }
 
