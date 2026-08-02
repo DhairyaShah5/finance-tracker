@@ -102,7 +102,6 @@ export function BudgetView({
   const monthly = statuses.map((s) => ({
     label: s.label.split(" ")[0],
     Income: earnedByMonth[s.month] ?? 0,
-    Budget: s.totalBudget,
     Spent: s.totalSpent,
   }));
 
@@ -180,22 +179,24 @@ export function BudgetView({
       <Reveal delay={60}>
         <Card className="surface">
           <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle>Income, budget & spent</CardTitle>
+            <CardTitle>Income vs spent</CardTitle>
             <ChartLegend
               items={[
-                { label: "Income (right)", color: "var(--chart-2)" },
+                { label: "Income", color: "var(--chart-2)" },
                 { label: "Spent", color: "var(--chart-1)" },
-                { label: "Budget", color: "var(--chart-3)", dashed: true },
               ]}
             />
           </CardHeader>
           <CardContent>
+            {/* One shared scale, so the gap tells the story: green line above the
+                purple fill = earned more than spent; purple rising above green =
+                a deficit month. Spent is the filled area; income rides on top as
+                a line. Budget lives in the by-category views below. */}
             <TrendChart
               data={monthly}
               series={[
-                { key: "Budget", name: "Budget", color: "var(--chart-3)", dashed: true },
-                { key: "Income", name: "Income", color: "var(--chart-2)", fillOpacity: 0, axis: "right" },
                 { key: "Spent", name: "Spent", color: "var(--chart-1)" },
+                { key: "Income", name: "Income", color: "var(--chart-2)", fillOpacity: 0 },
               ]}
               height={260}
               dots
