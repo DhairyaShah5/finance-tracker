@@ -79,7 +79,7 @@ export function TrendChart({
   dots = false,
 }: {
   data: SeriesPoint[];
-  series: { key: string; name: string; color?: string; dashed?: boolean }[];
+  series: { key: string; name: string; color?: string; dashed?: boolean; fillOpacity?: number }[];
   height?: number;
   dots?: boolean;
 }) {
@@ -114,7 +114,7 @@ export function TrendChart({
               strokeWidth={2.5}
               strokeDasharray={s.dashed ? "5 5" : undefined}
               fill={`url(#grad-${s.key})`}
-              fillOpacity={s.dashed ? 0.25 : 1}
+              fillOpacity={s.fillOpacity ?? (s.dashed ? 0.25 : 1)}
               connectNulls={false}
               dot={
                 dots

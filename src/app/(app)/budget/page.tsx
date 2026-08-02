@@ -1,5 +1,5 @@
 import { requireUser } from "@/lib/queries";
-import { monthlyBudgetStatus } from "@/lib/calc";
+import { monthlyBudgetStatus, incomeByMonth } from "@/lib/calc";
 import { monthKey } from "@/lib/format";
 import { PageHeader } from "@/components/page-header";
 import { BudgetView } from "./budget-view";
@@ -37,13 +37,23 @@ export default async function BudgetPage() {
     ),
   );
 
+  // Actual earned income per month (excludes arrival capital & refunds), so the
+  // budget trend can show income alongside budget vs spent. Map isn't
+  // serializable across the server/client boundary, so hand over a plain object.
+  const earnedByMonth = Object.fromEntries(incomeByMonth(txns));
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Budget"
         description="Based on what you typically spend each month, plus a little headroom. Browse any month."
       />
-      <BudgetView statuses={statuses} currentMonth={currentMonth} daysLeft={daysLeft} />
+      <BudgetView
+        statuses={statuses}
+        currentMonth={currentMonth}
+        daysLeft={daysLeft}
+        earnedByMonth={earnedByMonth}
+      />
     </div>
   );
 }

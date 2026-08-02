@@ -57,10 +57,12 @@ export function BudgetView({
   statuses,
   currentMonth,
   daysLeft,
+  earnedByMonth,
 }: {
   statuses: BudgetStatus[];
   currentMonth: string;
   daysLeft: number;
+  earnedByMonth: Record<string, number>;
 }) {
   const currentIdx = statuses.findIndex((s) => s.month === currentMonth);
   const [idx, setIdx] = React.useState(currentIdx === -1 ? statuses.length - 1 : currentIdx);
@@ -99,6 +101,7 @@ export function BudgetView({
     .map((c) => ({ label: c.name.split(" ")[0], Budget: c.budget, Spent: c.spent }));
   const monthly = statuses.map((s) => ({
     label: s.label.split(" ")[0],
+    Income: earnedByMonth[s.month] ?? 0,
     Budget: s.totalBudget,
     Spent: s.totalSpent,
   }));
@@ -177,9 +180,10 @@ export function BudgetView({
       <Reveal delay={60}>
         <Card className="surface">
           <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle>Budget vs spent</CardTitle>
+            <CardTitle>Income, budget & spent</CardTitle>
             <ChartLegend
               items={[
+                { label: "Income", color: "var(--chart-2)" },
                 { label: "Spent", color: "var(--chart-1)" },
                 { label: "Budget", color: "var(--chart-3)", dashed: true },
               ]}
@@ -190,6 +194,7 @@ export function BudgetView({
               data={monthly}
               series={[
                 { key: "Budget", name: "Budget", color: "var(--chart-3)", dashed: true },
+                { key: "Income", name: "Income", color: "var(--chart-2)", fillOpacity: 0.35 },
                 { key: "Spent", name: "Spent", color: "var(--chart-1)" },
               ]}
               height={260}
