@@ -79,10 +79,22 @@ export function TrendChart({
   dots = false,
 }: {
   data: SeriesPoint[];
-  series: { key: string; name: string; color?: string; dashed?: boolean; fillOpacity?: number }[];
+  series: {
+    key: string;
+    name: string;
+    color?: string;
+    dashed?: boolean;
+    fillOpacity?: number;
+    axis?: "left" | "right"; // "right" => its own scale, for series of a different magnitude
+  }[];
   height?: number;
   dots?: boolean;
 }) {
+  // A right-hand axis only appears when a series opts in, so a big-magnitude
+  // line (e.g. income next to budget/spend) keeps its own scale instead of
+  // flattening the others.
+  const hasRight = series.some((s) => s.axis === "right");
+  const rightColor = series.find((s) => s.axis === "right")?.color ?? "var(--chart-2)";
   return (
     <ResponsiveContainer width="100%" height={height}>
       <AreaChart data={data} margin={{ top: 10, right: 10, left: 4, bottom: 0 }}>
@@ -100,13 +112,24 @@ export function TrendChart({
         </defs>
         <CartesianGrid strokeDasharray="4 4" stroke="var(--border)" vertical={false} />
         <XAxis dataKey="label" {...AXIS} dy={4} />
-        <YAxis {...AXIS} width={52} tickFormatter={moneyTick} />
+        <YAxis yAxisId="left" {...AXIS} width={52} tickFormatter={moneyTick} />
+        {hasRight ? (
+          <YAxis
+            yAxisId="right"
+            orientation="right"
+            {...AXIS}
+            stroke={rightColor}
+            width={52}
+            tickFormatter={moneyTick}
+          />
+        ) : null}
         <Tooltip cursor={{ stroke: "var(--border)", strokeWidth: 1 }} content={<ChartTooltip />} />
         {series.map((s, i) => {
           const c = s.color ?? `var(--chart-${i + 1})`;
           return (
             <Area
               key={s.key}
+              yAxisId={s.axis ?? "left"}
               type="monotone"
               dataKey={s.key}
               name={s.name}
