@@ -194,7 +194,7 @@ export function BudgetView({
               data={monthly}
               series={[
                 { key: "Budget", name: "Budget", color: "var(--chart-3)", dashed: true },
-                { key: "Income", name: "Income", color: "var(--chart-2)", fillOpacity: 0.35, axis: "right" },
+                { key: "Income", name: "Income", color: "var(--chart-2)", fillOpacity: 0, axis: "right" },
                 { key: "Spent", name: "Spent", color: "var(--chart-1)" },
               ]}
               height={260}
