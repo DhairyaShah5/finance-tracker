@@ -102,8 +102,19 @@ export function BudgetView({
   const monthly = statuses.map((s) => ({
     label: s.label.split(" ")[0],
     Income: earnedByMonth[s.month] ?? 0,
+    Budget: s.totalBudget,
     Spent: s.totalSpent,
   }));
+
+  // Doubling gridlines (0, 1k, 2k, 4k, 8k, 16k, ...) paired with a symlog axis:
+  // income can dwarf budget/spend, so a linear scale flattens the smaller two.
+  // The log-style spacing keeps every line readable while still sharing one axis.
+  const trendMax = Math.max(0, ...monthly.flatMap((m) => [m.Income, m.Budget, m.Spent]));
+  const trendTicks = [0];
+  for (let t = 1000; ; t *= 2) {
+    trendTicks.push(t);
+    if (t >= trendMax) break;
+  }
 
   return (
     <div className="space-y-4">
@@ -179,26 +190,30 @@ export function BudgetView({
       <Reveal delay={60}>
         <Card className="surface">
           <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle>Income vs spent</CardTitle>
+            <CardTitle>Income, budget & spent</CardTitle>
             <ChartLegend
               items={[
                 { label: "Income", color: "var(--chart-2)" },
                 { label: "Spent", color: "var(--chart-1)" },
+                { label: "Budget", color: "var(--chart-3)", dashed: true },
               ]}
             />
           </CardHeader>
           <CardContent>
-            {/* One shared scale, so the gap tells the story: green line above the
-                purple fill = earned more than spent; purple rising above green =
-                a deficit month. Spent is the filled area; income rides on top as
-                a line. Budget lives in the by-category views below. */}
+            {/* One shared (symlog) scale so the gap tells the story: green line
+                above the purple fill = earned more than spent; purple rising above
+                green = a deficit month. Spent is the filled area; income and budget
+                ride on top as lines. Doubling ticks keep the smaller two readable. */}
             <TrendChart
               data={monthly}
               series={[
                 { key: "Spent", name: "Spent", color: "var(--chart-1)" },
+                { key: "Budget", name: "Budget", color: "var(--chart-3)", dashed: true, fillOpacity: 0 },
                 { key: "Income", name: "Income", color: "var(--chart-2)", fillOpacity: 0 },
               ]}
               height={260}
+              yScale="symlog"
+              yTicks={trendTicks}
               dots
             />
           </CardContent>

@@ -14,6 +14,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { scaleSymlog } from "victory-vendor/d3-scale";
 import { fmtMoney } from "@/lib/format";
 
 const AXIS = {
@@ -77,12 +78,20 @@ export function TrendChart({
   series,
   height = 260,
   dots = false,
+  yScale = "linear",
+  yTicks,
 }: {
   data: SeriesPoint[];
   series: { key: string; name: string; color?: string; dashed?: boolean; fillOpacity?: number }[];
   height?: number;
   dots?: boolean;
+  // "symlog" spreads out small values so a modest series (budget/spend) stays
+  // readable next to a much larger one (income) - and, unlike log, it handles 0.
+  yScale?: "linear" | "symlog";
+  yTicks?: number[]; // explicit gridline values, e.g. [0, 1k, 2k, 4k, 8k, 16k]
 }) {
+  const yAxisScale = yScale === "symlog" ? scaleSymlog().constant(2000) : undefined;
+  const yDomain = yTicks ? [yTicks[0], yTicks[yTicks.length - 1]] : undefined;
   return (
     <ResponsiveContainer width="100%" height={height}>
       <AreaChart data={data} margin={{ top: 10, right: 10, left: 4, bottom: 0 }}>
@@ -100,7 +109,14 @@ export function TrendChart({
         </defs>
         <CartesianGrid strokeDasharray="4 4" stroke="var(--border)" vertical={false} />
         <XAxis dataKey="label" {...AXIS} dy={4} />
-        <YAxis {...AXIS} width={52} tickFormatter={moneyTick} />
+        <YAxis
+          {...AXIS}
+          width={52}
+          tickFormatter={moneyTick}
+          {...(yAxisScale ? { scale: yAxisScale as never } : {})}
+          {...(yTicks ? { ticks: yTicks } : {})}
+          {...(yDomain ? { domain: yDomain, allowDataOverflow: true } : {})}
+        />
         <Tooltip cursor={{ stroke: "var(--border)", strokeWidth: 1 }} content={<ChartTooltip />} />
         {series.map((s, i) => {
           const c = s.color ?? `var(--chart-${i + 1})`;
