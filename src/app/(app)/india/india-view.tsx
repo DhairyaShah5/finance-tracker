@@ -12,7 +12,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { ArrowDownLeft, ArrowUpRight, IndianRupee, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Check, IndianRupee, Minus, MoreHorizontal, Pencil, Plus, Trash2, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -42,12 +42,47 @@ import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
 import { fmtDate, fmtInr, fmtNumber } from "@/lib/format";
 import { fxSummary } from "@/lib/calc";
+import { cn } from "@/lib/utils";
 import type { IndiaTransferRow } from "@/lib/database.types";
 import { TransferDialog } from "./transfer-dialog";
 import { useReadOnly } from "@/components/read-only-context";
 import { deleteTransfer } from "./actions";
 
 const VIEW_ONLY = "View only - sign in to make changes.";
+
+const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+
+/** Tiny square checkbox used to include/exclude a transfer from the net-worth
+ *  math. Renders a dash when the header toggle is in a partial state. */
+function CheckBox({
+  checked,
+  indeterminate,
+  onClick,
+  label,
+}: {
+  checked: boolean;
+  indeterminate?: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={indeterminate ? "mixed" : checked}
+      aria-label={label}
+      onClick={onClick}
+      className={cn(
+        "flex size-4 shrink-0 items-center justify-center rounded-[5px] border transition-colors",
+        checked || indeterminate
+          ? "border-primary bg-primary text-white"
+          : "border-muted-foreground/40 hover:border-muted-foreground",
+      )}
+    >
+      {indeterminate ? <Minus className="size-3" /> : checked ? <Check className="size-3" /> : null}
+    </button>
+  );
+}
 
 const tooltipStyle = {
   background: "var(--popover)",
@@ -107,15 +142,47 @@ function FxRateChart({ transfers }: { transfers: IndiaTransferRow[] }) {
   );
 }
 
-export function IndiaView({ transfers }: { transfers: IndiaTransferRow[] }) {
+export function IndiaView({
+  transfers,
+  usAssets,
+}: {
+  transfers: IndiaTransferRow[];
+  usAssets: number;
+}) {
   const router = useRouter();
 
   const [direction, setDirection] = React.useState("all");
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<IndiaTransferRow | null>(null);
+  // Transfers the user has ticked OFF the net-worth math. Empty = all counted,
+  // so brand-new transfers are always included by default.
+  const [excluded, setExcluded] = React.useState<Set<string>>(() => new Set());
 
+  // Headline totals reflect *every* transfer - they're the raw ledger record.
   const summary = React.useMemo(() => fxSummary(transfers), [transfers]);
-  const netUsd = summary.totalReceivedUsd - summary.totalSentUsd;
+
+  // Net debt & net worth, by contrast, only count the transfers still ticked.
+  // Received money came from India (a debt you carry); sending it back pays that
+  // debt down, so net debt = received − sent.
+  const netDebt = React.useMemo(() => {
+    const s = fxSummary(transfers.filter((t) => !excluded.has(t.id)));
+    return round2(s.totalReceivedUsd - s.totalSentUsd);
+  }, [transfers, excluded]);
+  // Your true, all-in net worth: US assets minus what you still owe to India.
+  const totalNetWorth = round2(usAssets - netDebt);
+  const excludedCount = excluded.size;
+
+  function toggleOne(id: string) {
+    setExcluded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function toggleAll() {
+    setExcluded((prev) => (prev.size === 0 ? new Set(transfers.map((t) => t.id)) : new Set()));
+  }
 
   const filtered = React.useMemo(() => {
     return transfers
@@ -185,27 +252,61 @@ export function IndiaView({ transfers }: { transfers: IndiaTransferRow[] }) {
         </Card>
       ) : (
         <>
+          {/* Total net worth hero - US assets netted against the India debt */}
+          <Card className="surface overflow-hidden">
+            <CardContent className="flex flex-col gap-2 p-5 sm:p-6">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-[0.7rem] font-medium uppercase tracking-wider text-muted-foreground">
+                    Total net worth
+                  </p>
+                  <Money
+                    value={totalNetWorth}
+                    cents
+                    colored
+                    className="mt-1 block text-3xl font-semibold tracking-tight sm:text-4xl"
+                  />
+                </div>
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-xl text-white shadow-sm shadow-primary/30 grad-brand">
+                  <Wallet className="size-4" />
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                US assets{" "}
+                <Money value={usAssets} cents className="font-medium text-foreground/80" /> − India net
+                debt <Money value={netDebt} cents className="font-medium text-foreground/80" />
+                {excludedCount > 0
+                  ? ` · ${excludedCount} transfer${excludedCount > 1 ? "s" : ""} excluded`
+                  : ""}
+              </p>
+            </CardContent>
+          </Card>
+
           {/* KPI grid */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <StatCard
               label="Total received"
               value={<Money value={summary.totalReceivedUsd} cents />}
               hint={fmtInr(summary.totalReceivedInr)}
-              accent="positive"
+              accent="negative"
               icon={<ArrowDownLeft className="size-4" />}
             />
             <StatCard
               label="Total sent"
               value={<Money value={summary.totalSentUsd} cents />}
               hint={fmtInr(summary.totalSentInr)}
-              accent="negative"
+              accent="positive"
               icon={<ArrowUpRight className="size-4" />}
             />
             <StatCard
-              label="Net USD"
-              value={<Money value={netUsd} cents colored />}
-              hint="Received − sent"
-              accent={netUsd >= 0 ? "positive" : "negative"}
+              label="Net debt"
+              value={<Money value={netDebt} cents />}
+              hint={
+                excludedCount > 0
+                  ? `Received − sent · ${excludedCount} excluded`
+                  : "Received − sent · owed to India"
+              }
+              accent={netDebt > 0 ? "negative" : "positive"}
             />
             <StatCard
               label="Avg received rate"
@@ -252,6 +353,14 @@ export function IndiaView({ transfers }: { transfers: IndiaTransferRow[] }) {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-8 pr-0">
+                    <CheckBox
+                      checked={excluded.size === 0}
+                      indeterminate={excluded.size > 0 && excluded.size < transfers.length}
+                      onClick={toggleAll}
+                      label="Include or exclude all transfers from net worth"
+                    />
+                  </TableHead>
                   <TableHead className="w-24">Date</TableHead>
                   <TableHead className="w-28">Direction</TableHead>
                   <TableHead>Description</TableHead>
@@ -266,7 +375,7 @@ export function IndiaView({ transfers }: { transfers: IndiaTransferRow[] }) {
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="py-10 text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={10} className="py-10 text-center text-sm text-muted-foreground">
                       No transfers match your filter.
                     </TableCell>
                   </TableRow>
@@ -274,15 +383,25 @@ export function IndiaView({ transfers }: { transfers: IndiaTransferRow[] }) {
                   filtered.map((t) => {
                     const rate = effectiveRate(t);
                     const received = t.direction === "received";
+                    const included = !excluded.has(t.id);
                     return (
-                      <TableRow key={t.id}>
+                      <TableRow key={t.id} className={cn(!included && "opacity-45")}>
+                        <TableCell className="pr-0">
+                          <CheckBox
+                            checked={included}
+                            onClick={() => toggleOne(t.id)}
+                            label={`${included ? "Exclude" : "Include"} ${t.description} ${
+                              included ? "from" : "in"
+                            } net worth`}
+                          />
+                        </TableCell>
                         <TableCell className="whitespace-nowrap text-muted-foreground tnum">
                           {fmtDate(t.transfer_date, "short")}
                         </TableCell>
                         <TableCell>
                           <Badge
                             variant="outline"
-                            className={received ? "text-positive" : "text-negative"}
+                            className={received ? "text-negative" : "text-positive"}
                           >
                             {received ? (
                               <ArrowDownLeft className="size-3" />
@@ -338,10 +457,10 @@ export function IndiaView({ transfers }: { transfers: IndiaTransferRow[] }) {
             <span className="flex gap-4">
               <span>
                 Received{" "}
-                <Money value={summary.totalReceivedUsd} cents className="font-medium text-positive" />
+                <Money value={summary.totalReceivedUsd} cents className="font-medium text-negative" />
               </span>
               <span>
-                Sent <Money value={summary.totalSentUsd} cents className="font-medium text-negative" />
+                Sent <Money value={summary.totalSentUsd} cents className="font-medium text-positive" />
               </span>
             </span>
           </div>
