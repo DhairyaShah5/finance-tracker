@@ -23,8 +23,8 @@ import {
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
 import { Money } from "@/components/money";
-import { sumOwed } from "@/lib/calc";
-import type { AccountRow, DebtorRow } from "@/lib/database.types";
+import { sumOwed, type DebtorBalance } from "@/lib/calc";
+import type { AccountRow, CategoryRow, DebtorRow } from "@/lib/database.types";
 import { useReadOnly } from "@/components/read-only-context";
 import { DebtorDialog } from "./debtor-dialog";
 import { SettleDialog } from "./settle-dialog";
@@ -33,19 +33,22 @@ import { deleteDebtor } from "./actions";
 const VIEW_ONLY = "View only - sign in to make changes.";
 
 export function DebtorsView({
-  debtors,
+  balances,
   accounts,
+  categories,
 }: {
-  debtors: DebtorRow[];
+  balances: DebtorBalance[];
   accounts: AccountRow[];
+  categories: CategoryRow[];
 }) {
   const router = useRouter();
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<DebtorRow | null>(null);
   const [settleOpen, setSettleOpen] = React.useState(false);
-  const [settling, setSettling] = React.useState<DebtorRow | null>(null);
+  const [settling, setSettling] = React.useState<DebtorBalance | null>(null);
 
-  const owed = sumOwed(debtors);
+  const owed = sumOwed(balances);
+  const debtors = balances.map((b) => b.debtor);
   const readOnly = useReadOnly();
 
   function onAdd() {
@@ -58,9 +61,9 @@ export function DebtorsView({
     setEditing(d);
     setDialogOpen(true);
   }
-  function onSettle(d: DebtorRow) {
+  function onSettle(b: DebtorBalance) {
     if (readOnly) return void toast.info(VIEW_ONLY);
-    setSettling(d);
+    setSettling(b);
     setSettleOpen(true);
   }
   function onDelete(d: DebtorRow) {
@@ -124,26 +127,33 @@ export function DebtorsView({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {debtors.map((d) => (
+              {balances.map(({ debtor: d, outstanding }) => (
                 <TableRow key={d.id}>
                   <TableCell className="font-medium">{d.name}</TableCell>
                   <TableCell className="hidden max-w-[32ch] truncate text-sm text-muted-foreground sm:table-cell">
                     {d.note?.trim() ? d.note : "-"}
                   </TableCell>
                   <TableCell className="text-right">
-                    <Money value={d.amount} cents colored={d.amount > 0} className="font-medium" />
+                    <Money value={outstanding} cents colored={outstanding > 0} className="font-medium" />
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center justify-end gap-1">
-                      {d.amount > 0 ? (
+                      {outstanding > 0 ? (
                         <Button
                           variant="outline"
                           size="sm"
                           className="h-7 gap-1.5"
-                          onClick={() => onSettle(d)}
+                          onClick={() => onSettle({ debtor: d, outstanding })}
                         >
                           <HandCoins className="size-3.5" /> Settle up
                         </Button>
+                      ) : d.amount > 0.005 ? (
+                        <span
+                          title="Old hand-typed balance. It's no longer counted — link its expense on Transactions (set it to Friend and pick this person) to track it."
+                          className="rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground"
+                        >
+                          Unlinked
+                        </span>
                       ) : (
                         <span className="rounded-full bg-secondary px-2 py-0.5 text-xs text-positive">
                           Settled
@@ -156,8 +166,8 @@ export function DebtorsView({
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          {d.amount > 0 ? (
-                            <DropdownMenuItem onClick={() => onSettle(d)}>
+                          {outstanding > 0 ? (
+                            <DropdownMenuItem onClick={() => onSettle({ debtor: d, outstanding })}>
                               <HandCoins className="size-4" /> Settle up
                             </DropdownMenuItem>
                           ) : null}
@@ -178,11 +188,18 @@ export function DebtorsView({
         </Card>
       )}
 
-      <DebtorDialog open={dialogOpen} onOpenChange={setDialogOpen} existing={editing} />
+      <DebtorDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        existing={editing}
+        accounts={accounts}
+        categories={categories}
+      />
       <SettleDialog
         open={settleOpen}
         onOpenChange={setSettleOpen}
-        debtor={settling}
+        debtor={settling?.debtor ?? null}
+        owed={settling?.outstanding ?? 0}
         accounts={accounts}
       />
     </div>

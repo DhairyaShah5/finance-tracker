@@ -35,11 +35,13 @@ export function SettleDialog({
   open,
   onOpenChange,
   debtor,
+  owed,
   accounts,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   debtor: DebtorRow | null;
+  owed: number; // derived outstanding balance for this debtor
   accounts: AccountRow[];
 }) {
   const router = useRouter();
@@ -50,8 +52,6 @@ export function SettleDialog({
   const [accountId, setAccountId] = React.useState("");
   const [date, setDate] = React.useState(today());
   const [description, setDescription] = React.useState("");
-
-  const owed = debtor?.amount ?? 0;
 
   React.useEffect(() => {
     if (!open) return;

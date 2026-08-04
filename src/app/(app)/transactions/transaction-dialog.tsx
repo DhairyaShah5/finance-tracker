@@ -36,6 +36,7 @@ import { fmtMoney, todayISO } from "@/lib/format";
 import { createTransaction, updateTransaction, type TransactionInput } from "./actions";
 
 const NONE = "__none__";
+const NEW_DEBTOR = "__new_debtor__";
 const today = todayISO;
 
 type Mode = "expense" | "income" | "transfer";
@@ -74,6 +75,7 @@ export function TransactionDialog({
   const [splitCount, setSplitCount] = React.useState("2");
   const [myShare, setMyShare] = React.useState(""); // explicit "your share" override
   const [debtorId, setDebtorId] = React.useState(NONE);
+  const [debtorName, setDebtorName] = React.useState(""); // for a new person typed inline
   const [reimbursable, setReimbursable] = React.useState(false);
   // An income entry that is really returned spend (a refund / money back). It
   // nets against a category instead of counting as income.
@@ -96,6 +98,7 @@ export function TransactionDialog({
       setSplitCount(existing.split_count ? String(existing.split_count) : "2");
       setMyShare(existing.my_share != null ? String(existing.my_share) : "");
       setDebtorId(existing.debtor_id ?? NONE);
+      setDebtorName("");
       setReimbursable(existing.reimbursable ?? false);
       // A non-transfer inflow carrying a category is a refund / return.
       setIsRefund(existing.direction === "inflow" && !existing.is_transfer && existing.category_id != null);
@@ -114,6 +117,7 @@ export function TransactionDialog({
       setSplitCount("2");
       setMyShare("");
       setDebtorId(NONE);
+      setDebtorName("");
       setReimbursable(false);
       setIsRefund(false);
       setNotes("");
@@ -123,14 +127,23 @@ export function TransactionDialog({
   function submit() {
     const direction = mode === "transfer" ? transferDir : mode === "income" ? "inflow" : "outflow";
     const refund = mode === "income" && isRefund;
-    // Every expense must be categorized; there is no "Uncategorized" bucket.
-    if (mode === "expense" && categoryId === NONE) {
+    const isFriend = mode === "expense" && whose === "Friend";
+    // Every expense must be categorized - EXCEPT a Friend expense, which isn't
+    // your spending at all, so a category is optional there.
+    if (mode === "expense" && !isFriend && categoryId === NONE) {
       toast.error("Pick a category for this expense.");
       return;
     }
     // A refund nets against a category, so it needs one.
     if (refund && categoryId === NONE) {
       toast.error("Pick the category this refund came from.");
+      return;
+    }
+    // A Friend expense must land under a person on Debtors.
+    const pickedDebtor = debtorId !== NONE && debtorId !== NEW_DEBTOR;
+    const newDebtor = debtorId === NEW_DEBTOR && debtorName.trim() !== "";
+    if (isFriend && !pickedDebtor && !newDebtor) {
+      toast.error("Pick who owes you, or add a new person.");
       return;
     }
     const input: TransactionInput = {
@@ -152,8 +165,10 @@ export function TransactionDialog({
         mode === "expense" && budgetGroup !== NONE
           ? (budgetGroup as TransactionInput["budget_group"])
           : null,
-      debtor_id: debtorId === NONE ? null : debtorId,
-      reimbursable: mode === "expense" ? reimbursable : false,
+      debtor_id: pickedDebtor ? debtorId : null,
+      debtor_name: newDebtor ? debtorName.trim() : null,
+      // Friend = fronted entirely for someone, so it's always a receivable.
+      reimbursable: mode === "expense" ? isFriend || reimbursable : false,
       notes: notes || null,
       is_transfer: mode === "transfer",
     };
@@ -243,10 +258,13 @@ export function TransactionDialog({
 
             {mode === "expense" ? (
               <div className="space-y-1.5">
-                <Label>Category</Label>
+                <Label>{whose === "Friend" ? "Category (optional)" : "Category"}</Label>
                 <Select value={categoryId} onValueChange={setCategoryId}>
-                  <SelectTrigger><SelectValue placeholder="Pick a category" /></SelectTrigger>
+                  <SelectTrigger>
+                    <SelectValue placeholder={whose === "Friend" ? "None" : "Pick a category"} />
+                  </SelectTrigger>
                   <SelectContent>
+                    {whose === "Friend" ? <SelectItem value={NONE}>None</SelectItem> : null}
                     {lookups.categories.map((c) => (
                       <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                     ))}
@@ -325,7 +343,14 @@ export function TransactionDialog({
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label>Whose expense</Label>
-                  <Select value={whose} onValueChange={setWhose}>
+                  <Select
+                    value={whose}
+                    onValueChange={(v) => {
+                      setWhose(v);
+                      if (v === "My") setDebtorId(NONE);
+                      else if (v !== "Friend" && debtorId === NEW_DEBTOR) setDebtorId(NONE);
+                    }}
+                  >
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {WHOSE_EXPENSE_VALUES.map((w) => (
@@ -336,42 +361,68 @@ export function TransactionDialog({
                 </div>
                 {whose !== "My" ? (
                   <div className="space-y-1.5">
-                    <Label>Debtor</Label>
+                    <Label>{whose === "Friend" ? "Who owes you?" : "Debtor"}</Label>
                     <Select value={debtorId} onValueChange={setDebtorId}>
-                      <SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger>
+                      <SelectTrigger>
+                        <SelectValue placeholder={whose === "Friend" ? "Pick or add" : "Optional"} />
+                      </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value={NONE}>Unassigned</SelectItem>
+                        {whose !== "Friend" ? <SelectItem value={NONE}>Unassigned</SelectItem> : null}
                         {lookups.debtors.map((d) => (
                           <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
                         ))}
+                        {whose === "Friend" ? (
+                          <SelectItem value={NEW_DEBTOR}>+ New person…</SelectItem>
+                        ) : null}
                       </SelectContent>
                     </Select>
                   </div>
                 ) : null}
               </div>
 
-              <div className="flex items-start justify-between gap-3 rounded-lg border border-border bg-secondary/40 p-3">
-                <div className="space-y-0.5">
-                  <Label htmlFor="reimbursable">Reimbursable</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Someone will pay you back for this (e.g. a work expense). It is kept out of your
-                    budget and tracked as owed back until the money lands.
-                  </p>
-                  {existing?.reimbursed ? (
-                    <p className="text-xs font-medium text-positive">Already reimbursed.</p>
-                  ) : (existing?.reimbursed_amount ?? 0) > 0 ? (
-                    <p className="text-xs font-medium text-primary">
-                      Partly reimbursed: {fmtMoney(existing!.reimbursed_amount, { cents: true })} back so far.
-                    </p>
-                  ) : null}
+              {whose === "Friend" && debtorId === NEW_DEBTOR ? (
+                <div className="space-y-1.5">
+                  <Label htmlFor="debtor-name">New person&apos;s name</Label>
+                  <Input
+                    id="debtor-name"
+                    value={debtorName}
+                    onChange={(e) => setDebtorName(e.target.value)}
+                    placeholder="e.g. Vivek"
+                    autoComplete="off"
+                  />
                 </div>
-                <Switch
-                  id="reimbursable"
-                  checked={reimbursable}
-                  onCheckedChange={setReimbursable}
-                  disabled={(existing?.reimbursed_amount ?? 0) > 0}
-                />
-              </div>
+              ) : null}
+
+              {whose === "Friend" ? (
+                <p className="rounded-lg border border-border bg-secondary/40 px-3 py-2.5 text-xs text-muted-foreground">
+                  Fronted entirely for someone else, so it isn&apos;t your spending — no category
+                  needed. It&apos;s tracked as owed back and shows under this person on Debtors until
+                  they pay you back.
+                </p>
+              ) : (
+                <div className="flex items-start justify-between gap-3 rounded-lg border border-border bg-secondary/40 p-3">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="reimbursable">Reimbursable</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Someone will pay you back for this (e.g. a work expense). It is kept out of your
+                      budget and tracked as owed back until the money lands.
+                    </p>
+                    {existing?.reimbursed ? (
+                      <p className="text-xs font-medium text-positive">Already reimbursed.</p>
+                    ) : (existing?.reimbursed_amount ?? 0) > 0 ? (
+                      <p className="text-xs font-medium text-primary">
+                        Partly reimbursed: {fmtMoney(existing!.reimbursed_amount, { cents: true })} back so far.
+                      </p>
+                    ) : null}
+                  </div>
+                  <Switch
+                    id="reimbursable"
+                    checked={reimbursable}
+                    onCheckedChange={setReimbursable}
+                    disabled={(existing?.reimbursed_amount ?? 0) > 0}
+                  />
+                </div>
+              )}
 
               {whose === "Group" || whose === "Roommates" ? (
                 <div className="grid grid-cols-2 items-end gap-3 rounded-lg border border-border bg-secondary/40 p-3">

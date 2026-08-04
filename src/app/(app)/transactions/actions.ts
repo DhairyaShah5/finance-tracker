@@ -19,6 +19,9 @@ const schema = z.object({
   inflow_type_id: z.string().uuid().nullable().optional(),
   whose_expense: z.enum(["My", "Friend", "Group", "Roommates"]).nullable().optional(),
   debtor_id: z.string().uuid().nullable().optional(),
+  // A brand-new person's name, typed on a Friend expense - we create the debtor
+  // and link it, so a Friend expense always lands under someone on Debtors.
+  debtor_name: z.string().trim().nullable().optional(),
   is_transfer: z.boolean().optional(),
   split_count: z.coerce.number().int().positive().nullable().optional(),
   my_share: z.coerce.number().min(0, "Share can't be negative.").nullable().optional(),
@@ -57,10 +60,43 @@ function normalize(data: z.output<typeof schema>) {
     // needs / wants / savings is per-transaction, only on real outflows.
     budget_group: !isTransfer && data.direction === "outflow" ? data.budget_group ?? null : null,
     // Reimbursable only applies to real outflows; `reimbursed` is left untouched
-    // so it survives edits (it's managed by markReimbursed, not this form).
-    reimbursable: !isTransfer && data.direction === "outflow" ? (data.reimbursable ?? false) : false,
+    // so it survives edits (it's managed by markReimbursed, not this form). A
+    // Friend expense is money fronted entirely for someone else, so it's ALWAYS
+    // a receivable - that's what makes it show up (once) as owed on Debtors.
+    reimbursable:
+      !isTransfer && data.direction === "outflow"
+        ? data.whose_expense === "Friend" || (data.reimbursable ?? false)
+        : false,
     notes: data.notes || null,
   };
+}
+
+/**
+ * A Friend expense must attach to a person. If the form passed a `debtor_name`
+ * (a new person typed inline) instead of an existing `debtor_id`, find-or-create
+ * that debtor for this user and return its id so the transaction can link to it.
+ */
+async function resolveDebtorId(
+  supabase: Awaited<ReturnType<typeof authed>>["supabase"],
+  userId: string,
+  data: z.output<typeof schema>,
+): Promise<string | null> {
+  if (data.debtor_id) return data.debtor_id;
+  const name = data.debtor_name?.trim();
+  if (!name || data.whose_expense !== "Friend") return null;
+  const { data: existing } = await supabase
+    .from("debtors")
+    .select("id")
+    .eq("user_id", userId)
+    .ilike("name", name)
+    .maybeSingle();
+  if (existing?.id) return existing.id;
+  const { data: created } = await supabase
+    .from("debtors")
+    .insert({ user_id: userId, name, amount: 0 })
+    .select("id")
+    .single();
+  return created?.id ?? null;
 }
 
 async function authed() {
@@ -81,9 +117,10 @@ export async function createTransaction(input: TransactionInput): Promise<Action
   const { supabase, user } = await authed();
   if (!user) return { ok: false, error: "Not signed in." };
 
+  const debtorId = await resolveDebtorId(supabase, user.id, parsed.data);
   const { error } = await supabase
     .from("transactions")
-    .insert({ user_id: user.id, ...normalize(parsed.data) });
+    .insert({ user_id: user.id, ...normalize(parsed.data), debtor_id: debtorId });
   if (error) return { ok: false, error: error.message };
   revalidate();
   return { ok: true };
@@ -95,9 +132,10 @@ export async function updateTransaction(id: string, input: TransactionInput): Pr
   const { supabase, user } = await authed();
   if (!user) return { ok: false, error: "Not signed in." };
 
+  const debtorId = await resolveDebtorId(supabase, user.id, parsed.data);
   const { error } = await supabase
     .from("transactions")
-    .update(normalize(parsed.data))
+    .update({ ...normalize(parsed.data), debtor_id: debtorId })
     .eq("id", id)
     .eq("user_id", user.id);
   if (error) return { ok: false, error: error.message };

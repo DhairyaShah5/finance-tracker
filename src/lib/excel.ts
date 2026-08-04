@@ -24,7 +24,7 @@ import {
   myAmount,
   reconcile,
   signed,
-  sumOwed,
+  debtorBalances,
 } from "@/lib/calc";
 import { fmtDate, monthKey, monthLabel, todayISO } from "@/lib/format";
 
@@ -203,7 +203,9 @@ function buildOverview(
 
   const recon = reconcile(data.transactions, netWorth);
   const totalWealth = netWorth + recon.savings;
-  const totalOwed = r2(sumOwed(data.debtors) + recon.reimbursable);
+  // Owed to you is a single ledger-derived figure now (reimbursable expenses,
+  // which include every Friend expense) - so debtors aren't added on top.
+  const totalOwed = recon.reimbursable;
 
   section("Snapshot");
   kv("Available funds (net worth)", netWorth);
@@ -564,9 +566,12 @@ function buildDebtors(wb: ExcelJS.Workbook, data: ExportData) {
     { header: "Owes", key: "amount", width: 14, numFmt: MONEY },
   ];
   const ws = dataSheet(wb, "Debtors", "FFEF4444", cols);
-  const sorted = [...data.debtors].sort((a, b) => b.amount - a.amount);
-  for (const d of sorted) {
-    ws.addRow({ name: d.name, note: d.note ?? "", amount: d.amount });
+  // Balances are derived from the linked reimbursable expenses, not stored.
+  const sorted = debtorBalances(data.transactions, data.debtors).sort(
+    (a, b) => b.outstanding - a.outstanding,
+  );
+  for (const { debtor: d, outstanding } of sorted) {
+    ws.addRow({ name: d.name, note: d.note ?? "", amount: outstanding });
   }
   const last = ws.rowCount;
   zebra(ws, 2, last, cols.length);

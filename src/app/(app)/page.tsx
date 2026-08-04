@@ -13,7 +13,7 @@ import {
   isArrivalDeposit,
   isSavingsTxn,
   myAmount,
-  sumOwed,
+  debtorBalances,
   signed,
 } from "@/lib/calc";
 import { fmtMoney, fmtDate, hueColor, monthKey, monthLabel } from "@/lib/format";
@@ -60,18 +60,20 @@ export default async function DashboardPage() {
   const netWorth = acctActivity
     .filter((a) => a.account.include_in_net_worth)
     .reduce((s, a) => s + a.balance, 0);
-  const owed = sumOwed(debtors);
 
   // Full reconciliation - every dollar in exactly one bucket:
   // arrival + income − spending − savings − net-fronted = net worth. Arrival
   // capital is starting funds, not income, so it sits in its own bucket.
   const recon = reconcile(txns, netWorth);
   const totalWealth = netWorth + recon.savings; // spendable + what's set aside
-  // Everything owed back to you: manually-tracked debtors + money fronted on
-  // reimbursable expenses that hasn't landed yet. Itemized for the modal.
-  const totalOwed = r2(owed + recon.reimbursable);
+  // Everything owed back to you comes from ONE source now - money fronted on
+  // reimbursable expenses (a Friend expense is always reimbursable) that hasn't
+  // landed yet. `recon.reimbursable` is that total, so it's never double-counted.
+  // We split it for the modal: expenses attached to a person are grouped under
+  // that debtor; the rest (e.g. work) shows as loose reimbursables.
+  const totalOwed = recon.reimbursable;
   const owedReimbursables = txns
-    .filter((t) => t.direction === "outflow" && !t.is_transfer && t.reimbursable)
+    .filter((t) => t.direction === "outflow" && !t.is_transfer && t.reimbursable && !t.debtor_id)
     .map((t) => ({
       id: t.id,
       description: t.description,
@@ -80,16 +82,18 @@ export default async function DashboardPage() {
     }))
     .filter((r) => r.outstanding > 0.005)
     .sort((a, b) => (a.date < b.date ? 1 : -1));
-  const owedDebtors = debtors
-    .filter((d) => Math.abs(d.amount) > 0.005)
-    .map((d) => ({ id: d.id, name: d.name, note: d.note, amount: d.amount }))
+  const owedDebtors = debtorBalances(txns, debtors)
+    .filter((b) => b.outstanding > 0.005)
+    .map((b) => ({ id: b.debtor.id, name: b.debtor.name, note: b.debtor.note, amount: b.outstanding }))
     .sort((a, b) => b.amount - a.amount);
   const owedHint =
-    recon.reimbursable > 0
-      ? `${fmtMoney(recon.reimbursable)} reimbursable${owedDebtors.length ? ` + ${owedDebtors.length} debtor${owedDebtors.length === 1 ? "" : "s"}` : ""}`
+    owedDebtors.length && owedReimbursables.length
+      ? `${owedDebtors.length} debtor${owedDebtors.length === 1 ? "" : "s"} + ${owedReimbursables.length} reimbursable`
       : owedDebtors.length
         ? `${owedDebtors.length} debtor${owedDebtors.length === 1 ? "" : "s"}`
-        : "All settled";
+        : owedReimbursables.length
+          ? `${fmtMoney(totalOwed)} reimbursable`
+          : "All settled";
 
   // Income split by source (each paycheck / inflow type) for the modal. Arrival
   // capital is starting funds, not income, so it's left out here just like in

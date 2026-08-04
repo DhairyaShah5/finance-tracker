@@ -700,11 +700,47 @@ export function accountActivity(
 }
 
 // ---------------------------------------------------------------------------
-// Debtors - explicit, user-managed amounts owed to you (not auto-derived).
+// Debtors - people who owe you money. A debtor's balance is DERIVED from the
+// ledger, never hand-typed: it's the still-outstanding receivable across every
+// reimbursable expense you fronted for that person (a "Friend" expense is always
+// reimbursable). Deriving it from transactions is what keeps "owed to me" from
+// double-counting - there's a single source of truth (the expense), and the
+// debtor is just a label that groups those expenses by person.
 // ---------------------------------------------------------------------------
-/** Total currently owed to you across all debtors. */
-export function sumOwed(debtors: Pick<DebtorRow, "amount">[]): number {
-  return round2(debtors.reduce((s, d) => s + (d.amount ?? 0), 0));
+/** Still-outstanding receivable on one reimbursable expense (0 for anything else). */
+export function outstandingReceivable(
+  t: Pick<
+    TransactionRow,
+    "direction" | "amount" | "is_transfer" | "whose_expense" | "split_count" | "my_share" | "reimbursable" | "reimbursed_amount"
+  >,
+): number {
+  if (t.direction !== "outflow" || t.is_transfer || !t.reimbursable) return 0;
+  const owed = round2(t.amount - myAmount(t)); // the part meant to come back
+  return round2(Math.max(0, owed - (t.reimbursed_amount ?? 0)));
+}
+
+export interface DebtorBalance {
+  debtor: DebtorRow;
+  outstanding: number; // derived from linked reimbursable expenses
+}
+
+/** Outstanding balance per debtor, summed from the expenses linked to each. */
+export function debtorBalances(
+  txns: TransactionRow[],
+  debtors: DebtorRow[],
+): DebtorBalance[] {
+  const byDebtor = new Map<string, number>();
+  for (const t of txns) {
+    if (!t.debtor_id) continue;
+    const out = outstandingReceivable(t);
+    if (out > 0.005) byDebtor.set(t.debtor_id, round2((byDebtor.get(t.debtor_id) ?? 0) + out));
+  }
+  return debtors.map((d) => ({ debtor: d, outstanding: byDebtor.get(d.id) ?? 0 }));
+}
+
+/** Total currently owed to you across all debtors (derived from the ledger). */
+export function sumOwed(balances: DebtorBalance[]): number {
+  return round2(balances.reduce((s, b) => s + b.outstanding, 0));
 }
 
 // ---------------------------------------------------------------------------
