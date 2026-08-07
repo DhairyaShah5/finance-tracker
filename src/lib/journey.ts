@@ -123,15 +123,15 @@ function topCategory(
 }
 
 /**
- * Recent monthly savings pace = earned income minus consumption, averaged over
- * the last `maxMonths` COMPLETED months (the in-progress current month is
- * excluded so a few days of data do not distort it). This is your own
- * earning-vs-spending capacity to close the debt; it deliberately ignores India
+ * Your actual average monthly savings = earned income minus consumption, summed
+ * across every COMPLETED month and divided by the number of those months (the
+ * in-progress current month is excluded so a few days do not distort it). This
+ * is a plain fact from the ledger, not a smoothed window. It ignores India
  * transfers, so a one-off tuition receipt raises the target (the gap) without
- * making this pace lurch. Investing is retained (part of net worth), so it is
- * not treated as spending. Returns null when there is no completed-month data.
+ * touching this figure. Investing is retained (part of net worth), so it is not
+ * treated as spending. Returns null when there is no completed-month data.
  */
-function recentSavingsPace(txns: TransactionRow[], today: string, maxMonths: number): number | null {
+function averageMonthlySavings(txns: TransactionRow[], today: string): number | null {
   const byMonth = new Map<string, number>();
   for (const t of txns) {
     if (t.is_transfer) continue;
@@ -146,12 +146,11 @@ function recentSavingsPace(txns: TransactionRow[], today: string, maxMonths: num
     byMonth.set(m, round2(v));
   }
   const currentMonth = today.slice(0, 7);
-  let months = [...byMonth.keys()].filter((m) => m < currentMonth).sort();
-  if (!months.length) months = [...byMonth.keys()].sort(); // fall back if only this month has data
+  let months = [...byMonth.keys()].filter((m) => m < currentMonth);
+  if (!months.length) months = [...byMonth.keys()]; // fall back if only this month has data
   if (!months.length) return null;
-  const recent = months.slice(-maxMonths);
-  const sum = recent.reduce((s, m) => s + (byMonth.get(m) ?? 0), 0);
-  return round2(sum / recent.length);
+  const sum = months.reduce((s, m) => s + (byMonth.get(m) ?? 0), 0);
+  return round2(sum / months.length);
 }
 
 /** Earliest transaction matching a predicate (by txn_date, then created_at). */
@@ -227,8 +226,8 @@ export interface DebtFreeGoal {
   monthsRemaining: number; // fractional months to the deadline
   currentAge: number;
   gap: number; // how much true net worth must still rise (0 once debt free)
-  requiredMonthly: number; // gap / monthsRemaining: the monthly pace needed
-  actualMonthly: number | null; // recent monthly change in true net worth (null if too little data)
+  requiredMonthly: number; // gap / monthsRemaining: how much to save each month
+  actualMonthly: number | null; // your actual average monthly savings (null if too little data)
   projectedISO: string | null; // projected debt-free date at the recent pace (null if not improving)
   status: "debtfree" | "ahead" | "on_track" | "behind" | "off_track" | "overdue";
 }
@@ -425,11 +424,11 @@ export function buildJourney(
     const monthsRemaining = daysRemaining / 30.4375;
     const currentAge = differenceInYears(todayDate, bd);
     const requiredMonthly = gapToDebtFree > 0 && monthsRemaining > 0 ? round2(gapToDebtFree / monthsRemaining) : 0;
-    // Pace = your recent monthly savings (income minus spending), NOT the true-
-    // net-worth delta. Using savings keeps the pace stable when a lumpy tuition
-    // transfer lands: that raises the gap (and the required amount), while your
-    // earning-vs-spending capacity is unchanged.
-    const actualMonthly = recentSavingsPace(txns, today, 6);
+    // What you actually save each month, on average (income minus spending over
+    // your whole time here). A plain fact, compared directly against the required
+    // amount. A lumpy tuition transfer raises the gap (and the required amount)
+    // without touching this figure.
+    const actualMonthly = averageMonthlySavings(txns, today);
     let projectedISO: string | null = null;
     let projectedDate: Date | null = null;
     if (!debtFree && actualMonthly != null && actualMonthly > 0) {

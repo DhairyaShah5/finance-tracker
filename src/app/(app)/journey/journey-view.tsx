@@ -404,18 +404,19 @@ function monthsBetween(fromISO: string, toISO: string): number {
 
 function verdict(goal: DebtFreeGoal): string {
   const need = fmtMoney(goal.requiredMonthly);
-  const pace = goal.actualMonthly == null ? "n/a" : fmtMoney(goal.actualMonthly, { sign: true });
+  const saving = goal.actualMonthly == null ? "n/a" : fmtMoney(goal.actualMonthly, { sign: true });
   const by = goal.projectedISO ? fmtDate(goal.projectedISO, "medium") : null;
   const early = goal.projectedISO ? monthsBetween(goal.projectedISO, goal.deadlineISO) : 0;
+  const noBorrow = "assuming no further borrowing";
   switch (goal.status) {
     case "off_track":
-      return `You are not building savings yet (spending about as much as you earn). To reach $0 by ${fmtDate(goal.deadlineISO, "medium")}, save about ${need}/month, and every new tuition transfer pushes that higher.`;
+      return `You are saving about ${saving} a month, so nothing is going toward the debt yet. You need about ${need}/month to reach $0 by ${fmtDate(goal.deadlineISO, "medium")}.`;
     case "behind":
-      return `At your savings pace of ${pace}/mo, and assuming no further borrowing, you would clear the ${fmtMoney(goal.gap)} around ${by}, after your ${goal.targetAge}th birthday. Save about ${need}/month to make it in time.`;
+      return `You are saving about ${saving}/month, but need ${need}/month. At that rate, ${noBorrow}, you would be debt free around ${by}, after your ${goal.targetAge}th birthday.`;
     case "ahead":
-      return `Ahead of schedule. At ${pace}/mo, and assuming no further borrowing, you would be debt free around ${by}, about ${early} month${early === 1 ? "" : "s"} before your ${goal.targetAge}th birthday.`;
+      return `You are saving about ${saving}/month, more than the ${need}/month you need. At that rate, ${noBorrow}, you would be debt free around ${by}, about ${early} month${early === 1 ? "" : "s"} before your ${goal.targetAge}th birthday.`;
     case "on_track":
-      return `On track. Saving ${pace}/mo, and assuming no further borrowing, clears the debt around ${by}, right about your ${goal.targetAge}th birthday.`;
+      return `You are saving about ${saving}/month, right around the ${need}/month you need. At that rate, ${noBorrow}, you would clear the debt around ${by}, close to your ${goal.targetAge}th birthday.`;
     case "overdue":
       return `Your ${goal.targetAge}th birthday has passed with ${fmtMoney(goal.gap)} still to go. Adjust the target in Settings.`;
     default:
@@ -465,16 +466,16 @@ function DebtFreeGoalCard({ goal }: { goal: DebtFreeGoal }) {
 
             <div className="grid gap-3 sm:grid-cols-3">
               <div className="rounded-xl border border-border/60 bg-secondary/30 px-4 py-3">
-                <p className="text-[0.65rem] font-medium uppercase tracking-wider text-muted-foreground">Save per month</p>
+                <p className="text-[0.65rem] font-medium uppercase tracking-wider text-muted-foreground">Need to save</p>
                 <p className="mt-1 text-2xl font-bold tnum text-primary">{fmtMoney(goal.requiredMonthly)}</p>
-                <p className="text-xs text-muted-foreground">to reach $0 by then</p>
+                <p className="text-xs text-muted-foreground">per month, to reach $0</p>
               </div>
               <div className="rounded-xl border border-border/60 bg-secondary/30 px-4 py-3">
-                <p className="text-[0.65rem] font-medium uppercase tracking-wider text-muted-foreground">Your savings pace</p>
+                <p className="text-[0.65rem] font-medium uppercase tracking-wider text-muted-foreground">You&apos;re saving</p>
                 <p className={cn("mt-1 text-2xl font-bold tnum", (goal.actualMonthly ?? 0) >= 0 ? "text-positive" : "text-negative")}>
                   {goal.actualMonthly == null ? "n/a" : fmtMoney(goal.actualMonthly, { sign: true })}
                 </p>
-                <p className="text-xs text-muted-foreground">income kept, per month</p>
+                <p className="text-xs text-muted-foreground">per month, on average</p>
               </div>
               <div className="rounded-xl border border-border/60 bg-secondary/30 px-4 py-3">
                 <p className="text-[0.65rem] font-medium uppercase tracking-wider text-muted-foreground">Still to close</p>
