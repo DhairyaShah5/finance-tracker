@@ -116,7 +116,7 @@ function JourneyChart({
 }) {
   const monthToLabel = new Map(points.map((p) => [p.month, p.label]));
   return (
-    <ResponsiveContainer width="100%" height={300}>
+    <ResponsiveContainer width="100%" height="100%" minHeight={340}>
       <AreaChart data={points} margin={{ top: 18, right: 12, left: 4, bottom: 0 }}>
         <defs>
           <linearGradient id="grad-journey" x1="0" y1="0" x2="0" y2="1">
@@ -127,7 +127,7 @@ function JourneyChart({
         </defs>
         <CartesianGrid strokeDasharray="4 4" stroke="var(--border)" vertical={false} />
         <XAxis dataKey="month" tickFormatter={(m: string) => monthToLabel.get(m) ?? m} minTickGap={14} {...AXIS} dy={4} />
-        <YAxis {...AXIS} width={56} tickFormatter={moneyTick} />
+        <YAxis {...AXIS} width={56} tickFormatter={moneyTick} tickCount={9} />
         <Tooltip cursor={{ stroke: "var(--border)", strokeWidth: 1 }} content={<JourneyTip />} />
         {boundaries.map((b) => (
           <ReferenceLine
@@ -454,19 +454,21 @@ export function JourneyView({ journey }: { journey: Journey }) {
       {/* Net worth journey + milestones (respond to the selected year) */}
       <div key={selected ?? "all"} className="space-y-6 animate-in fade-in-0 duration-500">
         <div className="grid gap-4 lg:grid-cols-5">
-          <Card className="surface lg:col-span-3">
+          <Card className="surface flex flex-col lg:col-span-3">
             <CardHeader>
               <CardTitle>{scope}</CardTitle>
               <p className="text-sm text-muted-foreground">
                 Total net worth month by month{selected == null ? ", with each anniversary marked." : "."}
               </p>
             </CardHeader>
-            <CardContent>
-              {shownPoints.length ? (
-                <JourneyChart points={shownPoints} boundaries={shownBoundaries} />
-              ) : (
-                <p className="py-16 text-center text-sm text-muted-foreground">No net worth movement recorded yet this year.</p>
-              )}
+            <CardContent className="flex flex-1 flex-col">
+              <div className="flex min-h-[340px] flex-1 flex-col justify-center">
+                {shownPoints.length ? (
+                  <JourneyChart points={shownPoints} boundaries={shownBoundaries} />
+                ) : (
+                  <p className="py-16 text-center text-sm text-muted-foreground">No net worth movement recorded yet this year.</p>
+                )}
+              </div>
               <p className="mt-3 border-t border-border/60 pt-3 text-xs text-muted-foreground">
                 Net worth is everything you own minus what you owe: cash, checking, savings and investments, less card balances.
               </p>

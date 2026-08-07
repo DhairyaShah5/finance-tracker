@@ -389,21 +389,39 @@ export function buildJourney(
   // "Built" milestones: net worth grown BEYOND the funds you arrived with, so
   // money from home never creates a hollow "crossed $Xk" milestone on day one.
   // Measured on (net worth minus arrival capital), which starts at zero on
-  // arrival and only climbs once you actually build past your starting stake.
+  // arrival and only climbs once you build past your starting stake.
+  //
+  // Dated at TRANSACTION granularity (a running total walked in date order), not
+  // the monthly close, so several thresholds crossed in one busy month get their
+  // real, distinct dates. If a single transaction leaps past more than one
+  // threshold at once, they collapse into one milestone rather than stacking on
+  // the same day.
   const beyond = arrivalCapital > 0;
+  const chron = [...txns].sort((a, b) =>
+    a.txn_date < b.txn_date ? -1 : a.txn_date > b.txn_date ? 1 : a.created_at.localeCompare(b.created_at),
+  );
+  let builtRunning = round2(netWorth - totalDelta); // net worth before the first transaction
   let bi = 0;
-  for (const p of trajectory) {
-    const built = p.netWorth - arrivalCapital;
+  while (bi < NW_THRESHOLDS.length && builtRunning - arrivalCapital >= NW_THRESHOLDS[bi]) bi++;
+  for (const t of chron) {
+    builtRunning = round2(builtRunning + wealthDelta(t, linkedCatIds));
+    const built = builtRunning - arrivalCapital;
+    const crossed: number[] = [];
     while (bi < NW_THRESHOLDS.length && built >= NW_THRESHOLDS[bi]) {
-      const t = NW_THRESHOLDS[bi];
-      push(
-        `${p.month}-15`,
-        "networth",
-        beyond ? `Built ${fmtK(t)} beyond your arrival funds` : `Crossed ${fmtK(t)} net worth`,
-        `Net worth reached ${fmtMoney(p.netWorth)} in ${p.fullLabel}`,
-      );
+      crossed.push(NW_THRESHOLDS[bi]);
       bi++;
     }
+    if (!crossed.length) continue;
+    const top = crossed[crossed.length - 1];
+    const passed = crossed.slice(0, -1);
+    push(
+      t.txn_date,
+      "networth",
+      beyond ? `Built ${fmtK(top)} beyond your arrival funds` : `Crossed ${fmtK(top)} net worth`,
+      passed.length
+        ? `Net worth reached ${fmtMoney(builtRunning)}, passing ${passed.map(fmtK).join(" and ")} the same day`
+        : `Net worth reached ${fmtMoney(builtRunning)}`,
+    );
   }
 
   // Anniversaries already reached.
