@@ -103,16 +103,16 @@ function JourneyTip({ active, payload }: { active?: boolean; payload?: Array<{ p
       <p className="mb-1.5 font-semibold">{p.fullLabel}</p>
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-2">
-          <span className="size-2.5 rounded-full" style={{ background: "var(--chart-2)" }} />
-          <span className="text-muted-foreground">Net worth</span>
-          <span className="ml-auto font-semibold tnum">{fmtMoney(p.netWorth, { cents: true })}</span>
-        </div>
-        <div className="flex items-center gap-2">
           <span className="size-2.5 rounded-full" style={{ background: "var(--chart-1)" }} />
           <span className="text-muted-foreground">True net worth</span>
           <span className={cn("ml-auto font-semibold tnum", p.trueNetWorth < 0 && "text-negative")}>
             {fmtMoney(p.trueNetWorth, { cents: true })}
           </span>
+        </div>
+        <div className="flex items-center gap-2 text-muted-foreground/80">
+          <span className="size-2.5 rounded-full" style={{ background: "var(--chart-2)" }} />
+          <span>Net worth (US)</span>
+          <span className="ml-auto tnum">{fmtMoney(p.netWorth, { cents: true })}</span>
         </div>
       </div>
     </div>
@@ -127,22 +127,33 @@ function JourneyChart({
   boundaries: { month: string; year: number }[];
 }) {
   const monthToLabel = new Map(points.map((p) => [p.month, p.label]));
+  // Always keep the $0 independence line in view, with a little breathing room.
+  const vals = points.map((p) => p.trueNetWorth);
+  const rawLo = Math.min(0, ...vals);
+  const rawHi = Math.max(0, ...vals);
+  const pad = Math.max(500, (rawHi - rawLo) * 0.08);
+  const domain: [number, number] = [Math.floor(rawLo - pad), Math.ceil(rawHi + pad)];
   return (
     <ResponsiveContainer width="100%" height="100%" minHeight={340}>
       <AreaChart data={points} margin={{ top: 18, right: 12, left: 4, bottom: 0 }}>
         <defs>
-          <linearGradient id="grad-journey" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--chart-2)" stopOpacity={0.5} />
-            <stop offset="60%" stopColor="var(--chart-2)" stopOpacity={0.14} />
-            <stop offset="100%" stopColor="var(--chart-2)" stopOpacity={0} />
+          <linearGradient id="grad-true" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.35} />
+            <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0.04} />
           </linearGradient>
         </defs>
         <CartesianGrid strokeDasharray="4 4" stroke="var(--border)" vertical={false} />
         <XAxis dataKey="month" tickFormatter={(m: string) => monthToLabel.get(m) ?? m} minTickGap={14} {...AXIS} dy={4} />
-        <YAxis {...AXIS} width={56} tickFormatter={moneyTick} tickCount={9} />
+        <YAxis {...AXIS} width={56} tickFormatter={moneyTick} tickCount={9} domain={domain} />
         <Tooltip cursor={{ stroke: "var(--border)", strokeWidth: 1 }} content={<JourneyTip />} />
-        {/* Zero line: the finish line for true net worth (financial independence). */}
-        <ReferenceLine y={0} stroke="var(--muted-foreground)" strokeDasharray="2 3" strokeOpacity={0.5} />
+        {/* The finish line: true net worth at $0 is financial independence. */}
+        <ReferenceLine
+          y={0}
+          stroke="var(--positive)"
+          strokeDasharray="5 4"
+          strokeOpacity={0.75}
+          label={{ value: "Independence · $0", position: "insideTopRight", fill: "var(--positive)", fontSize: 10, fontWeight: 600 }}
+        />
         {boundaries.map((b) => (
           <ReferenceLine
             key={b.month}
@@ -150,33 +161,20 @@ function JourneyChart({
             stroke="var(--primary)"
             strokeDasharray="4 4"
             strokeOpacity={0.6}
-            label={{ value: `Yr ${b.year}`, position: "insideTop", fill: "var(--primary)", fontSize: 10, fontWeight: 600 }}
+            label={{ value: `Yr ${b.year}`, position: "insideBottom", fill: "var(--primary)", fontSize: 10, fontWeight: 600 }}
           />
         ))}
-        <Area
-          type="monotone"
-          dataKey="netWorth"
-          name="Net worth"
-          stroke="var(--chart-2)"
-          strokeWidth={2.5}
-          fill="url(#grad-journey)"
-          dot={false}
-          activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--background)" }}
-          animationDuration={1000}
-        />
-        {/* True net worth (after family debt): a clean line, no fill, often below zero. */}
         <Area
           type="monotone"
           dataKey="trueNetWorth"
           name="True net worth"
           stroke="var(--chart-1)"
           strokeWidth={2.5}
-          strokeDasharray="5 4"
-          fill="var(--chart-1)"
-          fillOpacity={0}
+          fill="url(#grad-true)"
+          baseValue={0}
           dot={false}
           activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--background)" }}
-          animationDuration={1100}
+          animationDuration={1000}
         />
       </AreaChart>
     </ResponsiveContainer>
@@ -401,7 +399,7 @@ export function JourneyView({ journey }: { journey: Journey }) {
   const shownBoundaries = selected == null ? allBoundaries : [];
   const shownMilestones = selected == null ? journey.milestones : journey.milestones.filter((m) => m.year === selected);
   const shownYears = selected == null ? journey.years : journey.years.filter((y) => y.year === selected);
-  const scope = selected == null ? "The climb" : `Year ${selected} net worth`;
+  const scope = selected == null ? "The climb" : `Year ${selected} true net worth`;
   const milestoneScope = selected == null ? "Milestones" : `Year ${selected} milestones`;
 
   return (
@@ -525,20 +523,10 @@ export function JourneyView({ journey }: { journey: Journey }) {
             <CardHeader>
               <CardTitle>{scope}</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Total net worth month by month{selected == null ? ", with each anniversary marked." : "."}
+                Your true net worth month by month{selected == null ? ", climbing toward the $0 independence line." : "."}
               </p>
             </CardHeader>
             <CardContent className="flex flex-1 flex-col">
-              <div className="mb-1 flex flex-wrap gap-x-4 gap-y-1 text-xs">
-                <span className="flex items-center gap-1.5 text-muted-foreground">
-                  <span className="h-2.5 w-3 rounded-full" style={{ background: "var(--chart-2)" }} />
-                  Net worth
-                </span>
-                <span className="flex items-center gap-1.5 text-muted-foreground">
-                  <span className="w-4 border-t-2 border-dashed" style={{ borderColor: "var(--chart-1)" }} />
-                  True net worth (after family debt)
-                </span>
-              </div>
               <div className="flex min-h-[340px] flex-1 flex-col justify-center">
                 {shownPoints.length ? (
                   <JourneyChart points={shownPoints} boundaries={shownBoundaries} />
@@ -547,8 +535,8 @@ export function JourneyView({ journey }: { journey: Journey }) {
                 )}
               </div>
               <p className="mt-3 border-t border-border/60 pt-3 text-xs text-muted-foreground">
-                Net worth is everything you own. True net worth (dashed) subtracts the tuition and support received from
-                home; when it crosses $0, what you own outweighs what you owe home.
+                Your true net worth: everything you own minus the tuition and support received from home. The green line at
+                $0 is financial independence, when what you own outweighs what you owe home.
               </p>
             </CardContent>
           </Card>
