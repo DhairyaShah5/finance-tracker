@@ -144,10 +144,10 @@ function FxRateChart({ transfers }: { transfers: IndiaTransferRow[] }) {
 
 export function IndiaView({
   transfers,
-  usAssets,
+  usNetWorth,
 }: {
   transfers: IndiaTransferRow[];
-  usAssets: number;
+  usNetWorth: number;
 }) {
   const router = useRouter();
 
@@ -179,7 +179,7 @@ export function IndiaView({
     return round2(s.totalReceivedUsd - s.totalSentUsd);
   }, [transfers, excluded]);
   // Your true, all-in net worth: US assets minus what you still owe to India.
-  const totalNetWorth = round2(usAssets - netDebt);
+  const totalNetWorth = round2(usNetWorth - netDebt);
   const excludedCount = excluded.size;
 
   function toggleOne(id: string) {
@@ -306,8 +306,8 @@ export function IndiaView({
                 </span>
               </div>
               <p className="text-xs text-muted-foreground">
-                US assets{" "}
-                <Money value={usAssets} cents className="font-medium text-foreground/80" /> − India net
+                US net worth{" "}
+                <Money value={usNetWorth} cents className="font-medium text-foreground/80" /> − India net
                 debt <Money value={netDebt} cents className="font-medium text-foreground/80" />
                 {excludedCount > 0
                   ? ` · ${excludedCount} transfer${excludedCount > 1 ? "s" : ""} excluded`
