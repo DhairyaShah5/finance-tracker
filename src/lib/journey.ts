@@ -122,6 +122,38 @@ function topCategory(
   return best;
 }
 
+/**
+ * Recent monthly savings pace = earned income minus consumption, averaged over
+ * the last `maxMonths` COMPLETED months (the in-progress current month is
+ * excluded so a few days of data do not distort it). This is your own
+ * earning-vs-spending capacity to close the debt; it deliberately ignores India
+ * transfers, so a one-off tuition receipt raises the target (the gap) without
+ * making this pace lurch. Investing is retained (part of net worth), so it is
+ * not treated as spending. Returns null when there is no completed-month data.
+ */
+function recentSavingsPace(txns: TransactionRow[], today: string, maxMonths: number): number | null {
+  const byMonth = new Map<string, number>();
+  for (const t of txns) {
+    if (t.is_transfer) continue;
+    const m = t.txn_date.slice(0, 7);
+    let v = byMonth.get(m) ?? 0;
+    if (isRefund(t)) v += t.amount; // a refund lifts net savings (returned spend)
+    else if (t.direction === "inflow") {
+      if (!isArrivalDeposit(t)) v += t.amount; // earned income (arrival is starting funds)
+    } else if (!isSavingsTxn(t)) {
+      v -= myAmount(t); // consumption only; investing stays in net worth
+    }
+    byMonth.set(m, round2(v));
+  }
+  const currentMonth = today.slice(0, 7);
+  let months = [...byMonth.keys()].filter((m) => m < currentMonth).sort();
+  if (!months.length) months = [...byMonth.keys()].sort(); // fall back if only this month has data
+  if (!months.length) return null;
+  const recent = months.slice(-maxMonths);
+  const sum = recent.reduce((s, m) => s + (byMonth.get(m) ?? 0), 0);
+  return round2(sum / recent.length);
+}
+
 /** Earliest transaction matching a predicate (by txn_date, then created_at). */
 function earliestTxn(txns: TransactionRow[], pred: (t: TransactionRow) => boolean): TransactionRow | null {
   let best: TransactionRow | null = null;
@@ -393,14 +425,11 @@ export function buildJourney(
     const monthsRemaining = daysRemaining / 30.4375;
     const currentAge = differenceInYears(todayDate, bd);
     const requiredMonthly = gapToDebtFree > 0 && monthsRemaining > 0 ? round2(gapToDebtFree / monthsRemaining) : 0;
-    // Recent pace: change in true net worth over the last few months (up to 6).
-    let actualMonthly: number | null = null;
-    if (trajectory.length >= 2) {
-      const k = Math.min(6, trajectory.length - 1);
-      const last = trajectory[trajectory.length - 1].trueNetWorth;
-      const prev = trajectory[trajectory.length - 1 - k].trueNetWorth;
-      actualMonthly = round2((last - prev) / k);
-    }
+    // Pace = your recent monthly savings (income minus spending), NOT the true-
+    // net-worth delta. Using savings keeps the pace stable when a lumpy tuition
+    // transfer lands: that raises the gap (and the required amount), while your
+    // earning-vs-spending capacity is unchanged.
+    const actualMonthly = recentSavingsPace(txns, today, 6);
     let projectedISO: string | null = null;
     if (!debtFree && actualMonthly != null && actualMonthly > 0) {
       const monthsToZero = gapToDebtFree / actualMonthly;

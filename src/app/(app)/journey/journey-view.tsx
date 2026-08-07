@@ -400,11 +400,11 @@ function verdict(goal: DebtFreeGoal): string {
   const by = goal.projectedISO ? fmtDate(goal.projectedISO, "medium") : null;
   switch (goal.status) {
     case "off_track":
-      return `Your true net worth is not rising yet. To reach $0 by ${fmtDate(goal.deadlineISO, "medium")}, grow it by about ${need}/month by earning more than you spend and avoiding new debt.`;
+      return `You are not building savings yet (spending about as much as you earn). To reach $0 by ${fmtDate(goal.deadlineISO, "medium")}, save about ${need}/month, and every new tuition transfer pushes that higher.`;
     case "behind":
-      return `At your recent pace of ${pace}/mo you would be debt free around ${by}, after your ${goal.targetAge}th birthday. Lift it to about ${need}/month to hit the target.`;
+      return `At your savings pace of ${pace}/mo, and assuming no further borrowing, you would clear the ${fmtMoney(goal.gap)} around ${by}, after your ${goal.targetAge}th birthday. Save about ${need}/month to make it in time.`;
     case "on_track":
-      return `On pace. At ${pace}/mo you are on track to clear the debt around ${by}, by or before your ${goal.targetAge}th birthday.`;
+      return `On track. Saving ${pace}/mo, and assuming no further borrowing, clears the debt around ${by}, by or before your ${goal.targetAge}th birthday.`;
     case "overdue":
       return `Your ${goal.targetAge}th birthday has passed with ${fmtMoney(goal.gap)} still to go. Adjust the target in Settings.`;
     default:
@@ -459,11 +459,11 @@ function DebtFreeGoalCard({ goal }: { goal: DebtFreeGoal }) {
                 <p className="text-xs text-muted-foreground">to reach $0 by then</p>
               </div>
               <div className="rounded-xl border border-border/60 bg-secondary/30 px-4 py-3">
-                <p className="text-[0.65rem] font-medium uppercase tracking-wider text-muted-foreground">Your recent pace</p>
+                <p className="text-[0.65rem] font-medium uppercase tracking-wider text-muted-foreground">Your savings pace</p>
                 <p className={cn("mt-1 text-2xl font-bold tnum", (goal.actualMonthly ?? 0) >= 0 ? "text-positive" : "text-negative")}>
                   {goal.actualMonthly == null ? "n/a" : fmtMoney(goal.actualMonthly, { sign: true })}
                 </p>
-                <p className="text-xs text-muted-foreground">true net worth per month</p>
+                <p className="text-xs text-muted-foreground">income kept, per month</p>
               </div>
               <div className="rounded-xl border border-border/60 bg-secondary/30 px-4 py-3">
                 <p className="text-[0.65rem] font-medium uppercase tracking-wider text-muted-foreground">Still to close</p>
