@@ -30,9 +30,14 @@ export default async function JourneyPage() {
   // missing (before the migration is applied).
   const india = (indiaRes.data ?? []).filter((t) => !t.exclude_from_net_worth);
   const inflowTypes = inflowRes.data ?? [];
-  // arrival_date is optional (a recent migration). Read defensively so the page
-  // works even before the column exists in the database.
-  const arrivalDate = (settingsRes.data as { arrival_date?: string | null } | null)?.arrival_date ?? null;
+  // These settings columns arrived via recent migrations. Read defensively so
+  // the page works even before a column exists in the database.
+  const settings = settingsRes.data as
+    | { arrival_date?: string | null; birth_date?: string | null; debt_free_target_age?: number | null }
+    | null;
+  const arrivalDate = settings?.arrival_date ?? null;
+  const birthDate = settings?.birth_date ?? null;
+  const targetAge = settings?.debt_free_target_age ?? 25;
 
   // TOTAL net worth: every account balance summed (savings and investments
   // included; card debt subtracted). Category-linked investment credits are
@@ -40,7 +45,7 @@ export default async function JourneyPage() {
   const acctActivity = accountActivity(txns, accounts, categories);
   const netWorth = acctActivity.reduce((s, a) => s + a.balance, 0);
 
-  const journey = buildJourney(txns, india, categories, inflowTypes, netWorth, todayISO(), arrivalDate);
+  const journey = buildJourney(txns, india, categories, inflowTypes, netWorth, todayISO(), arrivalDate, birthDate, targetAge);
 
   if (!journey) {
     return (

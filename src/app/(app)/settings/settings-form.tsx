@@ -23,6 +23,8 @@ export function SettingsForm({ settings }: { settings: SettingsRow }) {
   const [budgetMonths, setBudgetMonths] = React.useState(String(settings.budget_months));
   const [savingsTarget, setSavingsTarget] = React.useState(String(settings.savings_target));
   const [arrivalDate, setArrivalDate] = React.useState(settings.arrival_date ?? "");
+  const [birthDate, setBirthDate] = React.useState(settings.birth_date ?? "");
+  const [targetAge, setTargetAge] = React.useState(String(settings.debt_free_target_age ?? 25));
 
   const funds = Number(startingFunds);
   const months = Number(budgetMonths);
@@ -40,6 +42,8 @@ export function SettingsForm({ settings }: { settings: SettingsRow }) {
       budget_months: budgetMonths,
       savings_target: savingsTarget,
       arrival_date: arrivalDate,
+      birth_date: birthDate,
+      debt_free_target_age: targetAge,
     };
     start(async () => {
       const res = await updateSettings(input);
@@ -139,6 +143,30 @@ export function SettingsForm({ settings }: { settings: SettingsRow }) {
               onChange={(e) => setArrivalDate(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">Anchors your Yearly Journey. Leave blank to use your first transaction.</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="birth_date">Date of birth</Label>
+            <Input
+              id="birth_date"
+              type="date"
+              value={birthDate}
+              onChange={(e) => setBirthDate(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">Sets the debt-free deadline (your birthday at the target age).</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="debt_free_target_age">Debt-free by age</Label>
+            <Input
+              id="debt_free_target_age"
+              type="number"
+              step="1"
+              min="1"
+              inputMode="numeric"
+              value={targetAge}
+              onChange={(e) => setTargetAge(e.target.value)}
+              placeholder="25"
+            />
+            <p className="text-xs text-muted-foreground">The age you want your true net worth to reach $0.</p>
           </div>
         </fieldset>
       </CardContent>

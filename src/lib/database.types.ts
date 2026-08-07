@@ -24,6 +24,8 @@ export interface Database {
           budget_months: number;
           savings_target: number;
           arrival_date: string | null;
+          birth_date: string | null;
+          debt_free_target_age: number;
         } & Timestamps & WithUpdated;
         Insert: {
           id?: string;
@@ -33,6 +35,8 @@ export interface Database {
           budget_months?: number;
           savings_target?: number;
           arrival_date?: string | null;
+          birth_date?: string | null;
+          debt_free_target_age?: number;
           created_at?: string;
           updated_at?: string;
         };

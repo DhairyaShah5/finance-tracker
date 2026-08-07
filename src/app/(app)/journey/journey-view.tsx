@@ -28,6 +28,7 @@ import {
   Plane,
   Scale,
   Sparkles,
+  Target,
   TrendingUp,
   Trophy,
 } from "lucide-react";
@@ -39,7 +40,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { Journey, JourneyYear, Milestone, MilestoneKind, NetWorthPoint } from "@/lib/journey";
+import type { DebtFreeGoal, Journey, JourneyYear, Milestone, MilestoneKind, NetWorthPoint } from "@/lib/journey";
 
 const AXIS = { stroke: "var(--muted-foreground)", fontSize: 11, tickLine: false, axisLine: false };
 const moneyTick = (v: number) => fmtMoney(v, { cents: false });
@@ -341,6 +342,152 @@ function YearCard({ y }: { y: JourneyYear }) {
   );
 }
 
+// --- Debt-free goal ---------------------------------------------------------
+
+function CountdownUnit({ value, label }: { value: number; label: string }) {
+  return (
+    <div className="flex min-w-16 flex-col items-center rounded-xl bg-secondary/60 px-3 py-2">
+      <span className="text-2xl font-bold tabular-nums sm:text-3xl">{String(value).padStart(2, "0")}</span>
+      <span className="text-[0.6rem] font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
+    </div>
+  );
+}
+
+/** Live countdown to the deadline. Ticks client-side; a server-safe fallback
+ *  (days only) renders first to avoid a hydration mismatch. */
+function Countdown({ deadlineISO, fallbackDays }: { deadlineISO: string; fallbackDays: number }) {
+  const [now, setNow] = React.useState<number | null>(null);
+  React.useEffect(() => {
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  let days = Math.max(0, fallbackDays);
+  let hours = 0;
+  let mins = 0;
+  let secs = 0;
+  if (now != null) {
+    let diff = Math.max(0, new Date(`${deadlineISO}T00:00:00`).getTime() - now);
+    days = Math.floor(diff / 86_400_000);
+    diff -= days * 86_400_000;
+    hours = Math.floor(diff / 3_600_000);
+    diff -= hours * 3_600_000;
+    mins = Math.floor(diff / 60_000);
+    diff -= mins * 60_000;
+    secs = Math.floor(diff / 1000);
+  }
+  return (
+    <div className="flex flex-wrap gap-2">
+      <CountdownUnit value={days} label="Days" />
+      <CountdownUnit value={hours} label="Hours" />
+      <CountdownUnit value={mins} label="Min" />
+      <CountdownUnit value={secs} label="Sec" />
+    </div>
+  );
+}
+
+const STATUS_META: Record<DebtFreeGoal["status"], { label: string; tint: string }> = {
+  debtfree: { label: "Debt free", tint: "var(--positive)" },
+  on_track: { label: "On track", tint: "var(--positive)" },
+  behind: { label: "Behind", tint: "var(--warning)" },
+  off_track: { label: "Off track", tint: "var(--negative)" },
+  overdue: { label: "Past deadline", tint: "var(--negative)" },
+};
+
+function verdict(goal: DebtFreeGoal): string {
+  const need = fmtMoney(goal.requiredMonthly);
+  const pace = goal.actualMonthly == null ? "n/a" : fmtMoney(goal.actualMonthly, { sign: true });
+  const by = goal.projectedISO ? fmtDate(goal.projectedISO, "medium") : null;
+  switch (goal.status) {
+    case "off_track":
+      return `Your true net worth is not rising yet. To reach $0 by ${fmtDate(goal.deadlineISO, "medium")}, grow it by about ${need}/month by earning more than you spend and avoiding new debt.`;
+    case "behind":
+      return `At your recent pace of ${pace}/mo you would be debt free around ${by}, after your ${goal.targetAge}th birthday. Lift it to about ${need}/month to hit the target.`;
+    case "on_track":
+      return `On pace. At ${pace}/mo you are on track to clear the debt around ${by}, by or before your ${goal.targetAge}th birthday.`;
+    case "overdue":
+      return `Your ${goal.targetAge}th birthday has passed with ${fmtMoney(goal.gap)} still to go. Adjust the target in Settings.`;
+    default:
+      return "";
+  }
+}
+
+function DebtFreeGoalCard({ goal }: { goal: DebtFreeGoal }) {
+  const meta = STATUS_META[goal.status];
+  const done = goal.status === "debtfree";
+  return (
+    <Card className="surface overflow-hidden">
+      <CardContent className="flex flex-col gap-5 p-5 sm:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="flex size-10 items-center justify-center rounded-xl grad-brand text-white shadow-sm shadow-primary/30 [&_svg]:size-5">
+              <Target />
+            </span>
+            <div>
+              <h2 className="text-lg font-bold tracking-tight">Debt free by {goal.targetAge}</h2>
+              <p className="text-xs text-muted-foreground">
+                By your {goal.targetAge}th birthday · {fmtDate(goal.deadlineISO, "long")} · you are {goal.currentAge} now
+              </p>
+            </div>
+          </div>
+          <span className="rounded-full px-3 py-1 text-xs font-semibold text-white" style={{ background: meta.tint }}>
+            {meta.label}
+          </span>
+        </div>
+
+        {done ? (
+          <p className="text-sm text-muted-foreground">
+            You did it. Your true net worth is at or above $0, so everything you own now covers what you owe home.
+          </p>
+        ) : (
+          <>
+            <div>
+              <p className="mb-2 text-[0.65rem] font-medium uppercase tracking-wider text-muted-foreground">
+                Time to your {goal.targetAge}th birthday
+              </p>
+              {goal.daysRemaining > 0 ? (
+                <Countdown deadlineISO={goal.deadlineISO} fallbackDays={goal.daysRemaining} />
+              ) : (
+                <p className="text-sm text-negative">The deadline has passed.</p>
+              )}
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl border border-border/60 bg-secondary/30 px-4 py-3">
+                <p className="text-[0.65rem] font-medium uppercase tracking-wider text-muted-foreground">Save per month</p>
+                <p className="mt-1 text-2xl font-bold tnum text-primary">{fmtMoney(goal.requiredMonthly)}</p>
+                <p className="text-xs text-muted-foreground">to reach $0 by then</p>
+              </div>
+              <div className="rounded-xl border border-border/60 bg-secondary/30 px-4 py-3">
+                <p className="text-[0.65rem] font-medium uppercase tracking-wider text-muted-foreground">Your recent pace</p>
+                <p className={cn("mt-1 text-2xl font-bold tnum", (goal.actualMonthly ?? 0) >= 0 ? "text-positive" : "text-negative")}>
+                  {goal.actualMonthly == null ? "n/a" : fmtMoney(goal.actualMonthly, { sign: true })}
+                </p>
+                <p className="text-xs text-muted-foreground">true net worth per month</p>
+              </div>
+              <div className="rounded-xl border border-border/60 bg-secondary/30 px-4 py-3">
+                <p className="text-[0.65rem] font-medium uppercase tracking-wider text-muted-foreground">Still to close</p>
+                <p className="mt-1 text-2xl font-bold tnum text-negative">{fmtMoney(goal.gap)}</p>
+                <p className="text-xs text-muted-foreground">until debt free</p>
+              </div>
+            </div>
+
+            <p
+              className="rounded-lg border px-4 py-2.5 text-sm text-foreground/90"
+              style={{
+                borderColor: `color-mix(in oklab, ${meta.tint} 40%, transparent)`,
+                background: `color-mix(in oklab, ${meta.tint} 8%, transparent)`,
+              }}
+            >
+              {verdict(goal)}
+            </p>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // --- Year selector ----------------------------------------------------------
 
 function YearSelector({
@@ -511,6 +658,13 @@ export function JourneyView({ journey }: { journey: Journey }) {
           <StatCard label="Total saved" value={<CountUp value={totalSaved} />} hint="Investments and vault" accent="positive" icon={<PiggyBank />} iconClassName="bg-positive" />
         </Reveal>
       </div>
+
+      {/* Debt-free goal: countdown, monthly target, and on-track verdict */}
+      {journey.goal ? (
+        <Reveal delay={270}>
+          <DebtFreeGoalCard goal={journey.goal} />
+        </Reveal>
+      ) : null}
 
       {/* Year selector: revisit any year */}
       <Reveal delay={280}>

@@ -28,6 +28,17 @@ const settingsSchema = z.object({
     (v) => (typeof v === "string" && v.trim() === "" ? null : v),
     z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a valid date.").nullable(),
   ).optional(),
+  // Birthdate + target age drive the debt-free goal (deadline = birthday at that age).
+  birth_date: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? null : v),
+    z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a valid date.").nullable(),
+  ).optional(),
+  debt_free_target_age: z.coerce
+    .number()
+    .int("Target age must be a whole number.")
+    .min(1, "Target age must be at least 1.")
+    .max(120, "Target age is too high.")
+    .optional(),
 });
 
 export type SettingsInput = z.input<typeof settingsSchema>;

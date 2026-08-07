@@ -11,7 +11,7 @@
 // The arrival date comes from Settings when set; otherwise it is read from the
 // data itself (the earliest arrival deposit, then the earliest transaction).
 
-import { addDays, addYears, differenceInCalendarDays, format, parseISO } from "date-fns";
+import { addDays, addYears, differenceInCalendarDays, differenceInYears, format, parseISO } from "date-fns";
 import type {
   CategoryRow,
   InflowTypeRow,
@@ -188,6 +188,19 @@ export interface Milestone {
   year: number; // journey-year this milestone falls in
 }
 
+export interface DebtFreeGoal {
+  targetAge: number;
+  deadlineISO: string; // your birthday at the target age
+  daysRemaining: number; // to the deadline (negative once it has passed)
+  monthsRemaining: number; // fractional months to the deadline
+  currentAge: number;
+  gap: number; // how much true net worth must still rise (0 once debt free)
+  requiredMonthly: number; // gap / monthsRemaining: the monthly pace needed
+  actualMonthly: number | null; // recent monthly change in true net worth (null if too little data)
+  projectedISO: string | null; // projected debt-free date at the recent pace (null if not improving)
+  status: "debtfree" | "on_track" | "behind" | "off_track" | "overdue";
+}
+
 export interface Journey {
   anchor: string; // arrival date (ISO)
   anchorSource: "settings" | "derived"; // where the arrival date came from
@@ -203,6 +216,7 @@ export interface Journey {
   debtFree: boolean; // true net worth is at or above zero (assets cover the family debt)
   gapToDebtFree: number; // how far below zero true net worth still is (0 once debt free)
   debtFreeReachedISO: string | null; // date true net worth first crossed zero, if it has
+  goal: DebtFreeGoal | null; // debt-free-by-target-age plan (null when no birthdate is set)
   peak: { netWorth: number; month: string; label: string } | null;
   years: JourneyYear[]; // newest first
   trajectory: NetWorthPoint[]; // oldest to newest
@@ -224,6 +238,8 @@ export function buildJourney(
   netWorth: number,
   today: string,
   arrivalOverride: string | null,
+  birthDate: string | null,
+  targetAge: number,
 ): Journey | null {
   if (!txns.length) return null;
   const derived = journeyAnchor(txns);
@@ -364,6 +380,55 @@ export function buildJourney(
   const firstDebtFreeMonth = trajectory.find((p) => p.trueNetWorth >= 0);
   const debtFreeReachedISO = debtFree && firstDebtFreeMonth ? `${firstDebtFreeMonth.month}-15` : null;
 
+  // Debt-free-by-target-age goal. Everything here is derived, so it moves with
+  // the ledger: a new India transfer raises netDebt -> the gap and required
+  // monthly savings rise; earning or repaying lowers them.
+  let goal: DebtFreeGoal | null = null;
+  if (isValidISO(birthDate)) {
+    const bd = parseISO(birthDate);
+    const deadline = addYears(bd, targetAge);
+    const deadlineISO = format(deadline, "yyyy-MM-dd");
+    const todayDate = parseISO(today);
+    const daysRemaining = differenceInCalendarDays(deadline, todayDate);
+    const monthsRemaining = daysRemaining / 30.4375;
+    const currentAge = differenceInYears(todayDate, bd);
+    const requiredMonthly = gapToDebtFree > 0 && monthsRemaining > 0 ? round2(gapToDebtFree / monthsRemaining) : 0;
+    // Recent pace: change in true net worth over the last few months (up to 6).
+    let actualMonthly: number | null = null;
+    if (trajectory.length >= 2) {
+      const k = Math.min(6, trajectory.length - 1);
+      const last = trajectory[trajectory.length - 1].trueNetWorth;
+      const prev = trajectory[trajectory.length - 1 - k].trueNetWorth;
+      actualMonthly = round2((last - prev) / k);
+    }
+    let projectedISO: string | null = null;
+    if (!debtFree && actualMonthly != null && actualMonthly > 0) {
+      const monthsToZero = gapToDebtFree / actualMonthly;
+      projectedISO = format(addDays(todayDate, Math.round(monthsToZero * 30.4375)), "yyyy-MM-dd");
+    }
+    const status: DebtFreeGoal["status"] = debtFree
+      ? "debtfree"
+      : daysRemaining < 0
+        ? "overdue"
+        : actualMonthly == null || actualMonthly <= 0
+          ? "off_track"
+          : actualMonthly >= requiredMonthly
+            ? "on_track"
+            : "behind";
+    goal = {
+      targetAge,
+      deadlineISO,
+      daysRemaining,
+      monthsRemaining: round2(monthsRemaining),
+      currentAge,
+      gap: gapToDebtFree,
+      requiredMonthly,
+      actualMonthly,
+      projectedISO,
+      status,
+    };
+  }
+
   // ------- Milestones: a data-driven, sentimental narrative (oldest first) ----
   const milestones: Milestone[] = [];
   const push = (date: string, kind: MilestoneKind, title: string, detail?: string, amount?: number) =>
@@ -495,6 +560,7 @@ export function buildJourney(
     debtFree,
     gapToDebtFree,
     debtFreeReachedISO,
+    goal,
     peak,
     years: years.reverse(),
     trajectory,
