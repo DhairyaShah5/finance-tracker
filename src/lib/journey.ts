@@ -143,6 +143,8 @@ export interface JourneyYear {
   days: number; // days elapsed in this year so far
   startNetWorth: number;
   endNetWorth: number;
+  trueStartNetWorth: number; // startNetWorth minus family debt at the year's start
+  trueEndNetWorth: number; // endNetWorth minus family debt at the year's end
   growth: number; // endNetWorth minus startNetWorth
   growthPct: number | null; // null when starting from about zero
   income: number;
@@ -161,7 +163,8 @@ export interface NetWorthPoint {
   month: string; // 'YYYY-MM'
   label: string; // 'Aug'
   fullLabel: string; // 'Aug 2025'
-  netWorth: number;
+  netWorth: number; // US total across every account
+  trueNetWorth: number; // netWorth minus family debt outstanding at this point
   year: number; // which journey-year this month falls in
 }
 
@@ -172,6 +175,7 @@ export type MilestoneKind =
   | "job"
   | "trip"
   | "networth"
+  | "independence"
   | "anniversary"
   | "peak";
 
@@ -191,9 +195,14 @@ export interface Journey {
   daysInUS: number;
   currentYear: number; // the year number you are currently living
   dayInCurrentYear: number;
-  currentNetWorth: number; // total across every account
+  currentNetWorth: number; // US total across every account
   arrivalCapital: number; // what you landed with
   builtSinceArrival: number; // currentNetWorth minus arrivalCapital
+  netDebt: number; // family support outstanding (received minus sent), mostly tuition
+  trueNetWorth: number; // currentNetWorth minus netDebt (what you own minus what you owe home)
+  independent: boolean; // true net worth is at or above zero
+  gapToIndependence: number; // how far below zero true net worth still is (0 once independent)
+  independenceReachedISO: string | null; // date true net worth first crossed zero, if it has
   peak: { netWorth: number; month: string; label: string } | null;
   years: JourneyYear[]; // newest first
   trajectory: NetWorthPoint[]; // oldest to newest
@@ -226,6 +235,16 @@ export function buildJourney(
   const inflowName = new Map(inflowTypes.map((i) => [i.id, i.name]));
   const anchorDate = parseISO(anchor);
 
+  // Family support carried as a debt: received from home minus sent back. Money
+  // still held (e.g. a CD) is both an asset in net worth and a debt here, so it
+  // cancels in true net worth; only support you have already spent (tuition, rent)
+  // drags true net worth below zero.
+  const signedDebt = (t: IndiaTransferRow) => (t.direction === "received" ? t.usd_amount : -t.usd_amount);
+  const netDebtAsOf = (iso: string) =>
+    round2(india.reduce((d, t) => (t.transfer_date <= iso ? d + signedDebt(t) : d), 0));
+  const netDebtThroughMonth = (month: string) =>
+    round2(india.reduce((d, t) => (t.transfer_date.slice(0, 7) <= month ? d + signedDebt(t) : d), 0));
+
   // Year-start dates: arrival, then each anniversary that has already happened.
   const starts: string[] = [];
   for (let k = 0; ; k++) {
@@ -254,6 +273,9 @@ export function buildJourney(
     const startNetWorth = prevEndNetWorth;
     const endNetWorth = netWorthAsOf(txns, linkedCatIds, netWorth, endISO);
     prevEndNetWorth = endNetWorth;
+
+    const trueStartNetWorth = round2(startNetWorth - netDebtAsOf(format(addDays(parseISO(startISO), -1), "yyyy-MM-dd")));
+    const trueEndNetWorth = round2(endNetWorth - netDebtAsOf(endISO));
 
     const s = windowStats(txns, startISO, nextStartISO);
     // Money kept from income = what you earned minus what you consumed. Savings
@@ -286,6 +308,8 @@ export function buildJourney(
       days: differenceInCalendarDays(parseISO(endISO), parseISO(startISO)) + 1,
       startNetWorth,
       endNetWorth,
+      trueStartNetWorth,
+      trueEndNetWorth,
       growth,
       growthPct: Math.abs(startNetWorth) > 1 ? round2((growth / Math.abs(startNetWorth)) * 100) : null,
       income: s.income,
@@ -318,6 +342,7 @@ export function buildJourney(
       label: monthLabel(month).split(" ")[0],
       fullLabel: monthLabel(month),
       netWorth: running,
+      trueNetWorth: round2(running - netDebtThroughMonth(month)),
       year: yearIndexOf(`${month}-01`),
     };
   });
@@ -330,6 +355,14 @@ export function buildJourney(
   const arrivalCapital = round2(
     txns.filter((t) => t.direction === "inflow" && isArrivalDeposit(t)).reduce((s, t) => s + t.amount, 0),
   );
+
+  // True, all-in net worth: what you own minus the family support you still owe.
+  const netDebt = netDebtAsOf(today);
+  const trueNetWorth = round2(netWorth - netDebt);
+  const independent = trueNetWorth >= 0;
+  const gapToIndependence = round2(Math.max(0, -trueNetWorth));
+  const firstIndependentMonth = trajectory.find((p) => p.trueNetWorth >= 0);
+  const independenceReachedISO = independent && firstIndependentMonth ? `${firstIndependentMonth.month}-15` : null;
 
   // ------- Milestones: a data-driven, sentimental narrative (oldest first) ----
   const milestones: Milestone[] = [];
@@ -429,6 +462,17 @@ export function buildJourney(
     push(starts[k], "anniversary", `${k} year${k === 1 ? "" : "s"} in the USA`, k === starts.length - 1 ? "A new chapter begins" : "Another year in the books");
   }
 
+  // Financial independence: the day true net worth first crossed zero, i.e. what
+  // you own outgrew the support from home. The single biggest milestone there is.
+  if (independenceReachedISO) {
+    push(
+      independenceReachedISO,
+      "independence",
+      "Reached financial independence",
+      "True net worth crossed $0: what you own now outweighs the support from home",
+    );
+  }
+
   // Peak, only when you have since come off it.
   if (peak && trajectory.length && peak.month !== trajectory[trajectory.length - 1].month) {
     push(`${peak.month}-28`, "peak", "All-time high net worth", peak.label, peak.netWorth);
@@ -446,6 +490,11 @@ export function buildJourney(
     currentNetWorth: round2(netWorth),
     arrivalCapital,
     builtSinceArrival: round2(netWorth - arrivalCapital),
+    netDebt,
+    trueNetWorth,
+    independent,
+    gapToIndependence,
+    independenceReachedISO,
     peak,
     years: years.reverse(),
     trajectory,
@@ -454,7 +503,7 @@ export function buildJourney(
 }
 
 function rank(kind: MilestoneKind): number {
-  const order: MilestoneKind[] = ["arrival", "income", "job", "invest", "trip", "networth", "anniversary", "peak"];
+  const order: MilestoneKind[] = ["arrival", "income", "job", "invest", "trip", "networth", "independence", "anniversary", "peak"];
   return order.indexOf(kind);
 }
 

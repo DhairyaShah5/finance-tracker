@@ -14,16 +14,19 @@ import {
 import {
   ArrowDownRight,
   ArrowUpRight,
+  Award,
   Banknote,
   Briefcase,
   CalendarDays,
   Coins,
   Flag,
+  HandCoins,
   LineChart,
   MapPin,
   PartyPopper,
   PiggyBank,
   Plane,
+  Scale,
   Sparkles,
   TrendingUp,
   Trophy,
@@ -96,12 +99,21 @@ function JourneyTip({ active, payload }: { active?: boolean; payload?: Array<{ p
   const p = payload[0]?.payload;
   if (!p) return null;
   return (
-    <div className="min-w-36 rounded-xl border border-border/70 bg-popover/85 px-3 py-2 text-xs shadow-xl backdrop-blur-md">
+    <div className="min-w-44 rounded-xl border border-border/70 bg-popover/85 px-3 py-2 text-xs shadow-xl backdrop-blur-md">
       <p className="mb-1.5 font-semibold">{p.fullLabel}</p>
-      <div className="flex items-center gap-2">
-        <span className="size-2.5 rounded-full" style={{ background: "var(--chart-2)" }} />
-        <span className="text-muted-foreground">Net worth</span>
-        <span className="ml-auto font-semibold tnum">{fmtMoney(p.netWorth, { cents: true })}</span>
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-2">
+          <span className="size-2.5 rounded-full" style={{ background: "var(--chart-2)" }} />
+          <span className="text-muted-foreground">Net worth</span>
+          <span className="ml-auto font-semibold tnum">{fmtMoney(p.netWorth, { cents: true })}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="size-2.5 rounded-full" style={{ background: "var(--chart-1)" }} />
+          <span className="text-muted-foreground">True net worth</span>
+          <span className={cn("ml-auto font-semibold tnum", p.trueNetWorth < 0 && "text-negative")}>
+            {fmtMoney(p.trueNetWorth, { cents: true })}
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -129,6 +141,8 @@ function JourneyChart({
         <XAxis dataKey="month" tickFormatter={(m: string) => monthToLabel.get(m) ?? m} minTickGap={14} {...AXIS} dy={4} />
         <YAxis {...AXIS} width={56} tickFormatter={moneyTick} tickCount={9} />
         <Tooltip cursor={{ stroke: "var(--border)", strokeWidth: 1 }} content={<JourneyTip />} />
+        {/* Zero line: the finish line for true net worth (financial independence). */}
+        <ReferenceLine y={0} stroke="var(--muted-foreground)" strokeDasharray="2 3" strokeOpacity={0.5} />
         {boundaries.map((b) => (
           <ReferenceLine
             key={b.month}
@@ -150,6 +164,20 @@ function JourneyChart({
           activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--background)" }}
           animationDuration={1000}
         />
+        {/* True net worth (after family debt): a clean line, no fill, often below zero. */}
+        <Area
+          type="monotone"
+          dataKey="trueNetWorth"
+          name="True net worth"
+          stroke="var(--chart-1)"
+          strokeWidth={2.5}
+          strokeDasharray="5 4"
+          fill="var(--chart-1)"
+          fillOpacity={0}
+          dot={false}
+          activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--background)" }}
+          animationDuration={1100}
+        />
       </AreaChart>
     </ResponsiveContainer>
   );
@@ -164,6 +192,7 @@ const MILESTONE_META: Record<MilestoneKind, { icon: typeof Plane; tint: string }
   invest: { icon: LineChart, tint: "var(--chart-4)" },
   trip: { icon: MapPin, tint: "var(--chart-5)" },
   networth: { icon: TrendingUp, tint: "var(--chart-2)" },
+  independence: { icon: Award, tint: "var(--positive)" },
   anniversary: { icon: Flag, tint: "var(--primary)" },
   peak: { icon: Trophy, tint: "var(--chart-5)" },
 };
@@ -254,6 +283,12 @@ function YearCard({ y }: { y: JourneyYear }) {
               {y.growthPct != null ? (
                 <span className="text-xs opacity-80"> ({y.growthPct >= 0 ? "+" : ""}{y.growthPct}%)</span>
               ) : null}
+            </p>
+            <p className="mt-1 text-[0.7rem] text-muted-foreground">
+              True:{" "}
+              <span className={cn("tnum font-medium", y.trueEndNetWorth < 0 ? "text-negative" : "text-foreground/80")}>
+                {fmtMoney(y.trueStartNetWorth)} → {fmtMoney(y.trueEndNetWorth)}
+              </span>
             </p>
           </div>
         </div>
@@ -411,6 +446,38 @@ export function JourneyView({ journey }: { journey: Journey }) {
                   <div className="h-full animate-shine rounded-full" style={{ width: `${yearPct}%`, backgroundImage: "linear-gradient(90deg, var(--brand-1), var(--brand-2), var(--brand-3), var(--brand-1))" }} />
                 </div>
               </div>
+              {/* True net worth: the honest, all-in number after the debt to home */}
+              <div className="mt-4 max-w-md rounded-xl border border-border/70 bg-card/50 px-4 py-3 backdrop-blur-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground">
+                      True net worth after family debt
+                    </p>
+                    <p className={cn("text-2xl font-bold tnum sm:text-3xl", journey.trueNetWorth >= 0 ? "text-positive" : "text-negative")}>
+                      {fmtMoney(journey.trueNetWorth, { cents: true })}
+                    </p>
+                  </div>
+                  <span
+                    className="flex size-9 shrink-0 items-center justify-center rounded-xl text-white shadow-sm [&_svg]:size-4"
+                    style={{ background: journey.independent ? "var(--positive)" : "var(--negative)" }}
+                  >
+                    {journey.independent ? <Award /> : <Scale />}
+                  </span>
+                </div>
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  {journey.independent ? (
+                    "What you own now outweighs the support from home. You are financially independent."
+                  ) : (
+                    <>
+                      Everything you own minus the{" "}
+                      <span className="font-medium text-foreground/80">{fmtMoney(journey.netDebt)}</span> in tuition and
+                      support from home.{" "}
+                      <span className="font-semibold text-foreground/90">{fmtMoney(journey.gapToIndependence)}</span> to
+                      financial independence.
+                    </>
+                  )}
+                </p>
+              </div>
             </div>
             <div className="grid shrink-0 grid-cols-3 gap-4 md:border-l md:border-border/60 md:pl-8">
               <div>
@@ -422,8 +489,8 @@ export function JourneyView({ journey }: { journey: Journey }) {
                 <p className="mt-1 text-xl font-semibold tnum sm:text-2xl">{fmtMoney(journey.arrivalCapital)}</p>
               </div>
               <div>
-                <p className="text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground">Peak</p>
-                <p className="mt-1 text-xl font-semibold tnum sm:text-2xl">{journey.peak ? fmtMoney(journey.peak.netWorth) : "n/a"}</p>
+                <p className="text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground">Owed to home</p>
+                <p className="mt-1 text-xl font-semibold tnum text-negative sm:text-2xl">{fmtMoney(journey.netDebt)}</p>
               </div>
             </div>
           </div>
@@ -462,6 +529,16 @@ export function JourneyView({ journey }: { journey: Journey }) {
               </p>
             </CardHeader>
             <CardContent className="flex flex-1 flex-col">
+              <div className="mb-1 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                <span className="flex items-center gap-1.5 text-muted-foreground">
+                  <span className="h-2.5 w-3 rounded-full" style={{ background: "var(--chart-2)" }} />
+                  Net worth
+                </span>
+                <span className="flex items-center gap-1.5 text-muted-foreground">
+                  <span className="w-4 border-t-2 border-dashed" style={{ borderColor: "var(--chart-1)" }} />
+                  True net worth (after family debt)
+                </span>
+              </div>
               <div className="flex min-h-[340px] flex-1 flex-col justify-center">
                 {shownPoints.length ? (
                   <JourneyChart points={shownPoints} boundaries={shownBoundaries} />
@@ -470,7 +547,8 @@ export function JourneyView({ journey }: { journey: Journey }) {
                 )}
               </div>
               <p className="mt-3 border-t border-border/60 pt-3 text-xs text-muted-foreground">
-                Net worth is everything you own minus what you owe: cash, checking, savings and investments, less card balances.
+                Net worth is everything you own. True net worth (dashed) subtracts the tuition and support received from
+                home; when it crosses $0, what you own outweighs what you owe home.
               </p>
             </CardContent>
           </Card>
