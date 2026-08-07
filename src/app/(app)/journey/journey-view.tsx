@@ -127,7 +127,7 @@ function JourneyChart({
   boundaries: { month: string; year: number }[];
 }) {
   const monthToLabel = new Map(points.map((p) => [p.month, p.label]));
-  // Always keep the $0 independence line in view, with a little breathing room.
+  // Always keep the $0 debt-free line in view, with a little breathing room.
   const vals = points.map((p) => p.trueNetWorth);
   const rawLo = Math.min(0, ...vals);
   const rawHi = Math.max(0, ...vals);
@@ -146,13 +146,13 @@ function JourneyChart({
         <XAxis dataKey="month" tickFormatter={(m: string) => monthToLabel.get(m) ?? m} minTickGap={14} {...AXIS} dy={4} />
         <YAxis {...AXIS} width={56} tickFormatter={moneyTick} tickCount={9} domain={domain} />
         <Tooltip cursor={{ stroke: "var(--border)", strokeWidth: 1 }} content={<JourneyTip />} />
-        {/* The finish line: true net worth at $0 is financial independence. */}
+        {/* The finish line: true net worth at $0 means you are debt free. */}
         <ReferenceLine
           y={0}
           stroke="var(--positive)"
           strokeDasharray="5 4"
           strokeOpacity={0.75}
-          label={{ value: "Independence · $0", position: "insideTopRight", fill: "var(--positive)", fontSize: 10, fontWeight: 600 }}
+          label={{ value: "Debt free · $0", position: "insideTopRight", fill: "var(--positive)", fontSize: 10, fontWeight: 600 }}
         />
         {boundaries.map((b) => (
           <ReferenceLine
@@ -190,7 +190,7 @@ const MILESTONE_META: Record<MilestoneKind, { icon: typeof Plane; tint: string }
   invest: { icon: LineChart, tint: "var(--chart-4)" },
   trip: { icon: MapPin, tint: "var(--chart-5)" },
   networth: { icon: TrendingUp, tint: "var(--chart-2)" },
-  independence: { icon: Award, tint: "var(--positive)" },
+  debtfree: { icon: Award, tint: "var(--positive)" },
   anniversary: { icon: Flag, tint: "var(--primary)" },
   peak: { icon: Trophy, tint: "var(--chart-5)" },
 };
@@ -457,21 +457,21 @@ export function JourneyView({ journey }: { journey: Journey }) {
                   </div>
                   <span
                     className="flex size-9 shrink-0 items-center justify-center rounded-xl text-white shadow-sm [&_svg]:size-4"
-                    style={{ background: journey.independent ? "var(--positive)" : "var(--negative)" }}
+                    style={{ background: journey.debtFree ? "var(--positive)" : "var(--negative)" }}
                   >
-                    {journey.independent ? <Award /> : <Scale />}
+                    {journey.debtFree ? <Award /> : <Scale />}
                   </span>
                 </div>
                 <p className="mt-1.5 text-xs text-muted-foreground">
-                  {journey.independent ? (
-                    "What you own now outweighs the support from home. You are financially independent."
+                  {journey.debtFree ? (
+                    "What you own now covers everything you owe home. You are debt free."
                   ) : (
                     <>
                       Everything you own minus the{" "}
                       <span className="font-medium text-foreground/80">{fmtMoney(journey.netDebt)}</span> in tuition and
                       support from home.{" "}
-                      <span className="font-semibold text-foreground/90">{fmtMoney(journey.gapToIndependence)}</span> to
-                      financial independence.
+                      <span className="font-semibold text-foreground/90">{fmtMoney(journey.gapToDebtFree)}</span> to debt
+                      free.
                     </>
                   )}
                 </p>
@@ -523,7 +523,7 @@ export function JourneyView({ journey }: { journey: Journey }) {
             <CardHeader>
               <CardTitle>{scope}</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Your true net worth month by month{selected == null ? ", climbing toward the $0 independence line." : "."}
+                Your true net worth month by month{selected == null ? ", climbing toward the $0 debt-free line." : "."}
               </p>
             </CardHeader>
             <CardContent className="flex flex-1 flex-col">
@@ -536,7 +536,7 @@ export function JourneyView({ journey }: { journey: Journey }) {
               </div>
               <p className="mt-3 border-t border-border/60 pt-3 text-xs text-muted-foreground">
                 Your true net worth: everything you own minus the tuition and support received from home. The green line at
-                $0 is financial independence, when what you own outweighs what you owe home.
+                $0 is debt free, when what you own covers everything you owe home.
               </p>
             </CardContent>
           </Card>

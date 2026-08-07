@@ -175,7 +175,7 @@ export type MilestoneKind =
   | "job"
   | "trip"
   | "networth"
-  | "independence"
+  | "debtfree"
   | "anniversary"
   | "peak";
 
@@ -200,9 +200,9 @@ export interface Journey {
   builtSinceArrival: number; // currentNetWorth minus arrivalCapital
   netDebt: number; // family support outstanding (received minus sent), mostly tuition
   trueNetWorth: number; // currentNetWorth minus netDebt (what you own minus what you owe home)
-  independent: boolean; // true net worth is at or above zero
-  gapToIndependence: number; // how far below zero true net worth still is (0 once independent)
-  independenceReachedISO: string | null; // date true net worth first crossed zero, if it has
+  debtFree: boolean; // true net worth is at or above zero (assets cover the family debt)
+  gapToDebtFree: number; // how far below zero true net worth still is (0 once debt free)
+  debtFreeReachedISO: string | null; // date true net worth first crossed zero, if it has
   peak: { netWorth: number; month: string; label: string } | null;
   years: JourneyYear[]; // newest first
   trajectory: NetWorthPoint[]; // oldest to newest
@@ -359,10 +359,10 @@ export function buildJourney(
   // True, all-in net worth: what you own minus the family support you still owe.
   const netDebt = netDebtAsOf(today);
   const trueNetWorth = round2(netWorth - netDebt);
-  const independent = trueNetWorth >= 0;
-  const gapToIndependence = round2(Math.max(0, -trueNetWorth));
-  const firstIndependentMonth = trajectory.find((p) => p.trueNetWorth >= 0);
-  const independenceReachedISO = independent && firstIndependentMonth ? `${firstIndependentMonth.month}-15` : null;
+  const debtFree = trueNetWorth >= 0;
+  const gapToDebtFree = round2(Math.max(0, -trueNetWorth));
+  const firstDebtFreeMonth = trajectory.find((p) => p.trueNetWorth >= 0);
+  const debtFreeReachedISO = debtFree && firstDebtFreeMonth ? `${firstDebtFreeMonth.month}-15` : null;
 
   // ------- Milestones: a data-driven, sentimental narrative (oldest first) ----
   const milestones: Milestone[] = [];
@@ -462,14 +462,14 @@ export function buildJourney(
     push(starts[k], "anniversary", `${k} year${k === 1 ? "" : "s"} in the USA`, k === starts.length - 1 ? "A new chapter begins" : "Another year in the books");
   }
 
-  // Financial independence: the day true net worth first crossed zero, i.e. what
-  // you own outgrew the support from home. The single biggest milestone there is.
-  if (independenceReachedISO) {
+  // Debt free: the day true net worth first crossed zero, i.e. what you own can
+  // finally cover everything you owe home. The single biggest milestone there is.
+  if (debtFreeReachedISO) {
     push(
-      independenceReachedISO,
-      "independence",
-      "Reached financial independence",
-      "True net worth crossed $0: what you own now outweighs the support from home",
+      debtFreeReachedISO,
+      "debtfree",
+      "Became debt free",
+      "True net worth crossed $0: what you own now covers everything you owe home",
     );
   }
 
@@ -492,9 +492,9 @@ export function buildJourney(
     builtSinceArrival: round2(netWorth - arrivalCapital),
     netDebt,
     trueNetWorth,
-    independent,
-    gapToIndependence,
-    independenceReachedISO,
+    debtFree,
+    gapToDebtFree,
+    debtFreeReachedISO,
     peak,
     years: years.reverse(),
     trajectory,
@@ -503,7 +503,7 @@ export function buildJourney(
 }
 
 function rank(kind: MilestoneKind): number {
-  const order: MilestoneKind[] = ["arrival", "income", "job", "invest", "trip", "networth", "independence", "anniversary", "peak"];
+  const order: MilestoneKind[] = ["arrival", "income", "job", "invest", "trip", "networth", "debtfree", "anniversary", "peak"];
   return order.indexOf(kind);
 }
 
