@@ -414,7 +414,8 @@ export function JourneyView({ journey }: { journey: Journey }) {
         <Card className="surface sheen relative overflow-hidden py-0">
           <div className="pointer-events-none absolute -right-16 -top-24 size-80 animate-drift rounded-full grad-brand opacity-20 blur-3xl" aria-hidden />
           <div className="pointer-events-none absolute -left-20 bottom-[-6rem] size-72 animate-float rounded-full opacity-15 blur-3xl" style={{ background: "var(--chart-2)" }} aria-hidden />
-          {freshChapter ? <Confetti /> : null}
+          {/* Confetti is saved for the real win: the day you become debt free. */}
+          {journey.debtFree ? <Confetti /> : null}
           <div className="relative flex flex-col gap-6 p-7 md:flex-row md:items-center md:justify-between">
             <div className="min-w-0">
               <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
