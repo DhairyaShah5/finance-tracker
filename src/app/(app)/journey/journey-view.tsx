@@ -388,23 +388,34 @@ function Countdown({ deadlineISO, fallbackDays }: { deadlineISO: string; fallbac
 
 const STATUS_META: Record<DebtFreeGoal["status"], { label: string; tint: string }> = {
   debtfree: { label: "Debt free", tint: "var(--positive)" },
-  on_track: { label: "On track", tint: "var(--positive)" },
+  ahead: { label: "Ahead of schedule", tint: "var(--positive)" },
+  on_track: { label: "On track", tint: "var(--chart-3)" },
   behind: { label: "Behind", tint: "var(--warning)" },
   off_track: { label: "Off track", tint: "var(--negative)" },
   overdue: { label: "Past deadline", tint: "var(--negative)" },
 };
 
+/** Whole months between two ISO dates (for "X months early"). */
+function monthsBetween(fromISO: string, toISO: string): number {
+  return Math.round(
+    (new Date(`${toISO}T00:00:00`).getTime() - new Date(`${fromISO}T00:00:00`).getTime()) / (86_400_000 * 30.4375),
+  );
+}
+
 function verdict(goal: DebtFreeGoal): string {
   const need = fmtMoney(goal.requiredMonthly);
   const pace = goal.actualMonthly == null ? "n/a" : fmtMoney(goal.actualMonthly, { sign: true });
   const by = goal.projectedISO ? fmtDate(goal.projectedISO, "medium") : null;
+  const early = goal.projectedISO ? monthsBetween(goal.projectedISO, goal.deadlineISO) : 0;
   switch (goal.status) {
     case "off_track":
       return `You are not building savings yet (spending about as much as you earn). To reach $0 by ${fmtDate(goal.deadlineISO, "medium")}, save about ${need}/month, and every new tuition transfer pushes that higher.`;
     case "behind":
       return `At your savings pace of ${pace}/mo, and assuming no further borrowing, you would clear the ${fmtMoney(goal.gap)} around ${by}, after your ${goal.targetAge}th birthday. Save about ${need}/month to make it in time.`;
+    case "ahead":
+      return `Ahead of schedule. At ${pace}/mo, and assuming no further borrowing, you would be debt free around ${by}, about ${early} month${early === 1 ? "" : "s"} before your ${goal.targetAge}th birthday.`;
     case "on_track":
-      return `On track. Saving ${pace}/mo, and assuming no further borrowing, clears the debt around ${by}, by or before your ${goal.targetAge}th birthday.`;
+      return `On track. Saving ${pace}/mo, and assuming no further borrowing, clears the debt around ${by}, right about your ${goal.targetAge}th birthday.`;
     case "overdue":
       return `Your ${goal.targetAge}th birthday has passed with ${fmtMoney(goal.gap)} still to go. Adjust the target in Settings.`;
     default:

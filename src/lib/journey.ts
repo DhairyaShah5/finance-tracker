@@ -230,7 +230,7 @@ export interface DebtFreeGoal {
   requiredMonthly: number; // gap / monthsRemaining: the monthly pace needed
   actualMonthly: number | null; // recent monthly change in true net worth (null if too little data)
   projectedISO: string | null; // projected debt-free date at the recent pace (null if not improving)
-  status: "debtfree" | "on_track" | "behind" | "off_track" | "overdue";
+  status: "debtfree" | "ahead" | "on_track" | "behind" | "off_track" | "overdue";
 }
 
 export interface Journey {
@@ -431,19 +431,24 @@ export function buildJourney(
     // earning-vs-spending capacity is unchanged.
     const actualMonthly = recentSavingsPace(txns, today, 6);
     let projectedISO: string | null = null;
+    let projectedDate: Date | null = null;
     if (!debtFree && actualMonthly != null && actualMonthly > 0) {
       const monthsToZero = gapToDebtFree / actualMonthly;
-      projectedISO = format(addDays(todayDate, Math.round(monthsToZero * 30.4375)), "yyyy-MM-dd");
+      projectedDate = addDays(todayDate, Math.round(monthsToZero * 30.4375));
+      projectedISO = format(projectedDate, "yyyy-MM-dd");
     }
-    const status: DebtFreeGoal["status"] = debtFree
-      ? "debtfree"
-      : daysRemaining < 0
-        ? "overdue"
-        : actualMonthly == null || actualMonthly <= 0
-          ? "off_track"
-          : actualMonthly >= requiredMonthly
-            ? "on_track"
-            : "behind";
+    // "Ahead" when the projected finish clears the deadline with real slack
+    // (at least ~10% of the remaining time, min 60 days); "on track" when it
+    // lands just in time; "behind" when it misses.
+    let status: DebtFreeGoal["status"];
+    if (debtFree) status = "debtfree";
+    else if (daysRemaining < 0) status = "overdue";
+    else if (actualMonthly == null || actualMonthly <= 0 || projectedDate == null) status = "off_track";
+    else {
+      const slackDays = differenceInCalendarDays(deadline, projectedDate);
+      const threshold = Math.max(60, daysRemaining * 0.1);
+      status = slackDays < 0 ? "behind" : slackDays >= threshold ? "ahead" : "on_track";
+    }
     goal = {
       targetAge,
       deadlineISO,
