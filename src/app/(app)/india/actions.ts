@@ -39,7 +39,8 @@ async function authed() {
 }
 
 function revalidate() {
-  for (const p of ["/india", "/"]) revalidatePath(p);
+  // /journey too: excluding a transfer changes true net worth there.
+  for (const p of ["/india", "/", "/journey"]) revalidatePath(p);
 }
 
 export async function createTransfer(input: TransferInput): Promise<ActionResult> {
@@ -66,6 +67,33 @@ export async function updateTransfer(id: string, input: TransferInput): Promise<
     .from("india_transfers")
     .update(normalize(parsed.data))
     .eq("id", id)
+    .eq("user_id", user.id);
+  if (error) return { ok: false, error: error.message };
+  revalidate();
+  return { ok: true };
+}
+
+/** Persist whether a single transfer counts toward the net-worth / debt math. */
+export async function setTransferExcluded(id: string, excluded: boolean): Promise<ActionResult> {
+  const { supabase, user } = await authed();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const { error } = await supabase
+    .from("india_transfers")
+    .update({ exclude_from_net_worth: excluded })
+    .eq("id", id)
+    .eq("user_id", user.id);
+  if (error) return { ok: false, error: error.message };
+  revalidate();
+  return { ok: true };
+}
+
+/** Include or exclude every transfer at once (the header select-all toggle). */
+export async function setAllTransfersExcluded(excluded: boolean): Promise<ActionResult> {
+  const { supabase, user } = await authed();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const { error } = await supabase
+    .from("india_transfers")
+    .update({ exclude_from_net_worth: excluded })
     .eq("user_id", user.id);
   if (error) return { ok: false, error: error.message };
   revalidate();

@@ -24,7 +24,11 @@ export default async function JourneyPage() {
   const txns = txnsRes.data ?? [];
   const accounts = accountsRes.data ?? [];
   const categories = categoriesRes.data ?? [];
-  const india = indiaRes.data ?? [];
+  // Transfers the user excluded on the India page (money not tracked in any US
+  // account, like a CD held outside the app) are left out of the debt math, so
+  // true net worth stays honest. Written defensively in case the column is
+  // missing (before the migration is applied).
+  const india = (indiaRes.data ?? []).filter((t) => !t.exclude_from_net_worth);
   const inflowTypes = inflowRes.data ?? [];
   // arrival_date is optional (a recent migration). Read defensively so the page
   // works even before the column exists in the database.

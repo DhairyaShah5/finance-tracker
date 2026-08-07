@@ -46,7 +46,7 @@ import { cn } from "@/lib/utils";
 import type { IndiaTransferRow } from "@/lib/database.types";
 import { TransferDialog } from "./transfer-dialog";
 import { useReadOnly } from "@/components/read-only-context";
-import { deleteTransfer } from "./actions";
+import { deleteTransfer, setAllTransfersExcluded, setTransferExcluded } from "./actions";
 
 const VIEW_ONLY = "View only - sign in to make changes.";
 
@@ -151,12 +151,22 @@ export function IndiaView({
 }) {
   const router = useRouter();
 
+  const readOnly = useReadOnly();
   const [direction, setDirection] = React.useState("all");
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<IndiaTransferRow | null>(null);
-  // Transfers the user has ticked OFF the net-worth math. Empty = all counted,
-  // so brand-new transfers are always included by default.
-  const [excluded, setExcluded] = React.useState<Set<string>>(() => new Set());
+  // Transfers ticked OFF the net-worth math. This is persisted per transfer in
+  // the DB (exclude_from_net_worth) so the choice survives a refresh and the
+  // Journey page's true net worth respects it too. Local state mirrors the DB and
+  // updates optimistically on toggle.
+  const excludedFromProps = React.useMemo(
+    () => new Set(transfers.filter((t) => t.exclude_from_net_worth).map((t) => t.id)),
+    [transfers],
+  );
+  const [excluded, setExcluded] = React.useState<Set<string>>(excludedFromProps);
+  React.useEffect(() => {
+    setExcluded(excludedFromProps);
+  }, [excludedFromProps]);
 
   // Headline totals reflect *every* transfer - they're the raw ledger record.
   const summary = React.useMemo(() => fxSummary(transfers), [transfers]);
@@ -173,15 +183,41 @@ export function IndiaView({
   const excludedCount = excluded.size;
 
   function toggleOne(id: string) {
+    if (readOnly) return void toast.info(VIEW_ONLY);
+    const willExclude = !excluded.has(id);
     setExcluded((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (willExclude) next.add(id);
+      else next.delete(id);
       return next;
+    });
+    setTransferExcluded(id, willExclude).then((res) => {
+      if (!res.ok) {
+        toast.error(res.error ?? "Failed to save.");
+        setExcluded((prev) => {
+          const next = new Set(prev);
+          if (willExclude) next.delete(id);
+          else next.add(id);
+          return next;
+        });
+      } else {
+        router.refresh();
+      }
     });
   }
   function toggleAll() {
-    setExcluded((prev) => (prev.size === 0 ? new Set(transfers.map((t) => t.id)) : new Set()));
+    if (readOnly) return void toast.info(VIEW_ONLY);
+    const willExcludeAll = excluded.size === 0;
+    const snapshot = new Set(excluded);
+    setExcluded(willExcludeAll ? new Set(transfers.map((t) => t.id)) : new Set());
+    setAllTransfersExcluded(willExcludeAll).then((res) => {
+      if (!res.ok) {
+        toast.error(res.error ?? "Failed to save.");
+        setExcluded(snapshot);
+      } else {
+        router.refresh();
+      }
+    });
   }
 
   const filtered = React.useMemo(() => {
@@ -196,8 +232,6 @@ export function IndiaView({
             : b.created_at.localeCompare(a.created_at),
       );
   }, [transfers, direction]);
-
-  const readOnly = useReadOnly();
 
   function onAdd() {
     if (readOnly) return void toast.info(VIEW_ONLY);

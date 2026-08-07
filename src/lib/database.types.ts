@@ -197,6 +197,7 @@ export interface Database {
           inr_amount: number;
           effective_fx_rate: number | null;
           notes: string | null;
+          exclude_from_net_worth: boolean;
         } & Timestamps;
         Insert: {
           id?: string;
@@ -208,6 +209,7 @@ export interface Database {
           usd_amount: number;
           inr_amount: number;
           notes?: string | null;
+          exclude_from_net_worth?: boolean;
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["india_transfers"]["Insert"]>;
