@@ -267,7 +267,7 @@ function YearCard({ y }: { y: JourneyYear }) {
               <span className="text-negative">{fmtMoney(y.spending)}</span>
             </YearStat>
             <YearStat label="Saved">{fmtMoney(y.saved)}</YearStat>
-            <YearStat label="Kept (net)">
+            <YearStat label="Kept from income">
               <span className={y.net >= 0 ? "text-positive" : "text-negative"}>{fmtMoney(y.net, { sign: true })}</span>
             </YearStat>
             <YearStat label="Savings rate">{y.savingsRate != null ? `${y.savingsRate}%` : "n/a"}</YearStat>
@@ -285,6 +285,10 @@ function YearCard({ y }: { y: JourneyYear }) {
                 </p>
               </div>
             ) : null}
+            <p className="col-span-2 text-[0.7rem] leading-relaxed text-muted-foreground sm:col-span-3">
+              Kept from income is what you earned minus what you spent, and the savings rate is that share of your income.
+              Investing and family transfers move your net worth on top of that, so amounts invested can be larger than what you kept from income.
+            </p>
           </div>
         ) : (
           <div className="flex items-center gap-3 rounded-lg border border-dashed border-border bg-secondary/20 px-4 py-5">

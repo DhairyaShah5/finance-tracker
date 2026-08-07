@@ -19,7 +19,7 @@ import type {
   TransactionRow,
 } from "@/lib/database.types";
 import { isArrivalDeposit, isRefund, isSavingsTxn, myAmount, signed } from "@/lib/calc";
-import { monthLabel } from "@/lib/format";
+import { fmtMoney, monthLabel } from "@/lib/format";
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const isValidISO = (s: string | null | undefined): s is string => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
@@ -256,7 +256,11 @@ export function buildJourney(
     prevEndNetWorth = endNetWorth;
 
     const s = windowStats(txns, startISO, nextStartISO);
-    const net = round2(s.income - s.spending - s.saved);
+    // Money kept from income = what you earned minus what you consumed. Savings
+    // are NOT subtracted: money moved into investments is still yours and still
+    // part of net worth. (The old "income minus spending minus saved" could go
+    // negative even in a year your net worth grew, which made no sense.)
+    const net = round2(s.income - s.spending);
 
     let rUsd = 0;
     let sUsd = 0;
@@ -382,12 +386,23 @@ export function buildJourney(
     if (firstTrip) push(firstTrip.txn_date, "trip", "Your first trip", firstTrip.description || "Time to explore", myAmount(firstTrip));
   }
 
-  // Net-worth thresholds actually reached (first month each was crossed).
-  let ti = 0;
+  // "Built" milestones: net worth grown BEYOND the funds you arrived with, so
+  // money from home never creates a hollow "crossed $Xk" milestone on day one.
+  // Measured on (net worth minus arrival capital), which starts at zero on
+  // arrival and only climbs once you actually build past your starting stake.
+  const beyond = arrivalCapital > 0;
+  let bi = 0;
   for (const p of trajectory) {
-    while (ti < NW_THRESHOLDS.length && p.netWorth >= NW_THRESHOLDS[ti]) {
-      push(`${p.month}-15`, "networth", `Crossed ${fmtK(NW_THRESHOLDS[ti])} net worth`, `Reached in ${p.fullLabel}`, NW_THRESHOLDS[ti]);
-      ti++;
+    const built = p.netWorth - arrivalCapital;
+    while (bi < NW_THRESHOLDS.length && built >= NW_THRESHOLDS[bi]) {
+      const t = NW_THRESHOLDS[bi];
+      push(
+        `${p.month}-15`,
+        "networth",
+        beyond ? `Built ${fmtK(t)} beyond your arrival funds` : `Crossed ${fmtK(t)} net worth`,
+        `Net worth reached ${fmtMoney(p.netWorth)} in ${p.fullLabel}`,
+      );
+      bi++;
     }
   }
 
