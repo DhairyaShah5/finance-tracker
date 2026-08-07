@@ -12,26 +12,31 @@ export const dynamic = "force-dynamic";
 export default async function JourneyPage() {
   const { supabase, user } = await requireUser();
 
-  const [txnsRes, accountsRes, categoriesRes, indiaRes] = await Promise.all([
+  const [settingsRes, txnsRes, accountsRes, categoriesRes, indiaRes, inflowRes] = await Promise.all([
+    supabase.from("settings").select("*").eq("user_id", user.id).maybeSingle(),
     supabase.from("transactions").select("*").eq("user_id", user.id).order("txn_date", { ascending: true }),
     supabase.from("accounts").select("*").eq("user_id", user.id).order("display_order"),
     supabase.from("categories").select("*").eq("user_id", user.id),
     supabase.from("india_transfers").select("*").eq("user_id", user.id),
+    supabase.from("inflow_types").select("*").eq("user_id", user.id),
   ]);
 
   const txns = txnsRes.data ?? [];
   const accounts = accountsRes.data ?? [];
   const categories = categoriesRes.data ?? [];
   const india = indiaRes.data ?? [];
+  const inflowTypes = inflowRes.data ?? [];
+  // arrival_date is optional (a recent migration). Read defensively so the page
+  // works even before the column exists in the database.
+  const arrivalDate = (settingsRes.data as { arrival_date?: string | null } | null)?.arrival_date ?? null;
 
-  // Canonical available-funds net worth - the same figure the dashboard and
-  // reconcile() use (accounts flagged into net worth).
+  // TOTAL net worth: every account balance summed (savings and investments
+  // included; card debt subtracted). Category-linked investment credits are
+  // already reflected in each destination account's balance here.
   const acctActivity = accountActivity(txns, accounts, categories);
-  const netWorth = acctActivity
-    .filter((a) => a.account.include_in_net_worth)
-    .reduce((s, a) => s + a.balance, 0);
+  const netWorth = acctActivity.reduce((s, a) => s + a.balance, 0);
 
-  const journey = buildJourney(txns, accounts, india, categories, netWorth, todayISO());
+  const journey = buildJourney(txns, india, categories, inflowTypes, netWorth, todayISO(), arrivalDate);
 
   if (!journey) {
     return (

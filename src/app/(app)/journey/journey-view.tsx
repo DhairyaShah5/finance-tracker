@@ -14,9 +14,13 @@ import {
 import {
   ArrowDownRight,
   ArrowUpRight,
+  Banknote,
+  Briefcase,
   CalendarDays,
   Coins,
   Flag,
+  LineChart,
+  MapPin,
   PartyPopper,
   PiggyBank,
   Plane,
@@ -26,19 +30,64 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
-import { Money } from "@/components/money";
 import { CountUp } from "@/components/count-up";
 import { Reveal } from "@/components/reveal";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { Journey, JourneyYear, Milestone, NetWorthPoint } from "@/lib/journey";
+import type { Journey, JourneyYear, Milestone, MilestoneKind, NetWorthPoint } from "@/lib/journey";
 
 const AXIS = { stroke: "var(--muted-foreground)", fontSize: 11, tickLine: false, axisLine: false };
 const moneyTick = (v: number) => fmtMoney(v, { cents: false });
 const YEAR_TINT = ["var(--chart-2)", "var(--chart-1)", "var(--chart-5)", "var(--chart-3)", "var(--chart-4)"];
 const tintOf = (year: number) => YEAR_TINT[(year - 1) % YEAR_TINT.length];
+
+// --- Contained confetti burst (fires once for a fresh chapter) --------------
+
+function Confetti() {
+  const pieces = React.useMemo(
+    () =>
+      Array.from({ length: 30 }, (_, i) => ({
+        left: Math.random() * 100,
+        delay: Math.random() * 1.4,
+        dur: 2.4 + Math.random() * 2,
+        color: ["var(--brand-1)", "var(--brand-2)", "var(--brand-3)", "var(--chart-2)", "var(--chart-5)"][i % 5],
+        w: 5 + Math.random() * 5,
+        rot: Math.random() * 360,
+      })),
+    [],
+  );
+  const [on, setOn] = React.useState(true);
+  React.useEffect(() => {
+    if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      setOn(false);
+      return;
+    }
+    const t = setTimeout(() => setOn(false), 6500);
+    return () => clearTimeout(t);
+  }, []);
+  if (!on) return null;
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
+      {pieces.map((p, i) => (
+        <span
+          key={i}
+          className="absolute top-0 animate-confetti rounded-[2px]"
+          style={{
+            left: `${p.left}%`,
+            width: p.w,
+            height: p.w * 1.5,
+            background: p.color,
+            animationDelay: `${p.delay}s`,
+            animationDuration: `${p.dur}s`,
+            transform: `rotate(${p.rot}deg)`,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
 
 // --- Net-worth journey chart ------------------------------------------------
 
@@ -71,19 +120,13 @@ function JourneyChart({
       <AreaChart data={points} margin={{ top: 18, right: 12, left: 4, bottom: 0 }}>
         <defs>
           <linearGradient id="grad-journey" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--chart-2)" stopOpacity={0.45} />
-            <stop offset="60%" stopColor="var(--chart-2)" stopOpacity={0.12} />
+            <stop offset="0%" stopColor="var(--chart-2)" stopOpacity={0.5} />
+            <stop offset="60%" stopColor="var(--chart-2)" stopOpacity={0.14} />
             <stop offset="100%" stopColor="var(--chart-2)" stopOpacity={0} />
           </linearGradient>
         </defs>
         <CartesianGrid strokeDasharray="4 4" stroke="var(--border)" vertical={false} />
-        <XAxis
-          dataKey="month"
-          tickFormatter={(m: string) => monthToLabel.get(m) ?? m}
-          minTickGap={14}
-          {...AXIS}
-          dy={4}
-        />
+        <XAxis dataKey="month" tickFormatter={(m: string) => monthToLabel.get(m) ?? m} minTickGap={14} {...AXIS} dy={4} />
         <YAxis {...AXIS} width={56} tickFormatter={moneyTick} />
         <Tooltip cursor={{ stroke: "var(--border)", strokeWidth: 1 }} content={<JourneyTip />} />
         {boundaries.map((b) => (
@@ -105,7 +148,7 @@ function JourneyChart({
           fill="url(#grad-journey)"
           dot={false}
           activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--background)" }}
-          animationDuration={900}
+          animationDuration={1000}
         />
       </AreaChart>
     </ResponsiveContainer>
@@ -114,21 +157,32 @@ function JourneyChart({
 
 // --- Milestone timeline -----------------------------------------------------
 
-const MILESTONE_META: Record<Milestone["kind"], { icon: typeof Plane; tint: string }> = {
-  arrival: { icon: Plane, tint: "var(--chart-2)" },
-  networth: { icon: TrendingUp, tint: "var(--chart-1)" },
+const MILESTONE_META: Record<MilestoneKind, { icon: typeof Plane; tint: string }> = {
+  arrival: { icon: Plane, tint: "var(--chart-3)" },
+  income: { icon: Banknote, tint: "var(--chart-2)" },
+  job: { icon: Briefcase, tint: "var(--chart-1)" },
+  invest: { icon: LineChart, tint: "var(--chart-4)" },
+  trip: { icon: MapPin, tint: "var(--chart-5)" },
+  networth: { icon: TrendingUp, tint: "var(--chart-2)" },
   anniversary: { icon: Flag, tint: "var(--primary)" },
   peak: { icon: Trophy, tint: "var(--chart-5)" },
 };
 
 function Timeline({ milestones }: { milestones: Milestone[] }) {
+  if (!milestones.length) {
+    return <p className="py-6 text-center text-sm text-muted-foreground">No milestones recorded yet.</p>;
+  }
   return (
     <ol className="relative ml-3 space-y-5 border-l border-border/70 pl-6">
       {milestones.map((m, i) => {
         const meta = MILESTONE_META[m.kind];
         const Icon = meta.icon;
         return (
-          <li key={`${m.date}-${i}`} className="relative">
+          <li
+            key={`${m.date}-${i}`}
+            className="relative animate-in fade-in-0 slide-in-from-left-2"
+            style={{ animationDelay: `${i * 70}ms`, animationFillMode: "both", animationDuration: "480ms" }}
+          >
             <span
               className="absolute -left-[35px] flex size-6 items-center justify-center rounded-full text-white shadow-sm ring-4 ring-card [&_svg]:size-3.5"
               style={{ background: meta.tint }}
@@ -172,7 +226,7 @@ function YearCard({ y }: { y: JourneyYear }) {
   const Arrow = up ? ArrowUpRight : ArrowDownRight;
 
   return (
-    <Card className="surface overflow-hidden py-0">
+    <Card className="surface hover-lift overflow-hidden py-0">
       <div className="h-1 w-full" style={{ background: tint }} aria-hidden />
       <CardContent className="flex flex-col gap-4 p-5">
         <div className="flex flex-wrap items-start justify-between gap-2">
@@ -180,13 +234,13 @@ function YearCard({ y }: { y: JourneyYear }) {
             <div className="flex items-center gap-2">
               <h3 className="text-lg font-bold tracking-tight">{y.label}</h3>
               {y.isCurrent ? (
-                <Badge className="border-0 text-white" style={{ background: tint }}>
+                <Badge className="animate-pulse-ring border-0 text-white" style={{ background: tint }}>
                   In progress
                 </Badge>
               ) : null}
             </div>
             <p className="text-xs text-muted-foreground">
-              {fmtDate(y.startISO, "medium")} – {fmtDate(y.endISO, "medium")} · {y.days} days
+              {fmtDate(y.startISO, "medium")} to {fmtDate(y.endISO, "medium")} · {y.days} days
             </p>
           </div>
           <div className="text-right">
@@ -196,8 +250,10 @@ function YearCard({ y }: { y: JourneyYear }) {
             </p>
             <p className={cn("flex items-center justify-end gap-0.5 text-sm font-semibold", up ? "text-positive" : "text-negative")}>
               <Arrow className="size-3.5" />
-              {fmtMoney(y.growth, { sign: true })}
-              {y.growthPct != null ? <span className="text-xs opacity-80"> ({y.growthPct >= 0 ? "+" : ""}{y.growthPct}%)</span> : null}
+              <CountUp value={y.growth} sign />
+              {y.growthPct != null ? (
+                <span className="text-xs opacity-80"> ({y.growthPct >= 0 ? "+" : ""}{y.growthPct}%)</span>
+              ) : null}
             </p>
           </div>
         </div>
@@ -214,9 +270,9 @@ function YearCard({ y }: { y: JourneyYear }) {
             <YearStat label="Kept (net)">
               <span className={y.net >= 0 ? "text-positive" : "text-negative"}>{fmtMoney(y.net, { sign: true })}</span>
             </YearStat>
-            <YearStat label="Savings rate">{y.savingsRate != null ? `${y.savingsRate}%` : "—"}</YearStat>
+            <YearStat label="Savings rate">{y.savingsRate != null ? `${y.savingsRate}%` : "n/a"}</YearStat>
             <YearStat label="From India (net)">
-              {y.indiaNetUsd !== 0 ? fmtMoney(y.indiaNetUsd, { sign: true }) : "—"}
+              {y.indiaNetUsd !== 0 ? fmtMoney(y.indiaNetUsd, { sign: true }) : "n/a"}
             </YearStat>
             {y.topCategory ? (
               <div className="col-span-2 rounded-lg border border-border/60 bg-secondary/30 px-3 py-2 sm:col-span-3">
@@ -248,30 +304,80 @@ function YearCard({ y }: { y: JourneyYear }) {
   );
 }
 
+// --- Year selector ----------------------------------------------------------
+
+function YearSelector({
+  years,
+  selected,
+  onSelect,
+  currentYear,
+}: {
+  years: JourneyYear[];
+  selected: number | null;
+  onSelect: (y: number | null) => void;
+  currentYear: number;
+}) {
+  const chip = (isActive: boolean) =>
+    cn(
+      "relative shrink-0 rounded-full px-4 py-1.5 text-sm font-medium transition-all duration-200",
+      isActive ? "grad-brand text-white shadow-sm shadow-primary/30" : "bg-secondary text-muted-foreground hover:bg-secondary/70 hover:text-foreground",
+    );
+  return (
+    <div className="flex gap-2 overflow-x-auto pb-1">
+      <button type="button" onClick={() => onSelect(null)} className={chip(selected === null)}>
+        Full journey
+      </button>
+      {[...years]
+        .sort((a, b) => a.year - b.year)
+        .map((y) => (
+          <button key={y.year} type="button" onClick={() => onSelect(y.year)} className={chip(selected === y.year)}>
+            {y.label}
+            {y.year === currentYear ? (
+              <span className="ml-1.5 inline-block size-1.5 rounded-full bg-current align-middle" aria-hidden />
+            ) : null}
+          </button>
+        ))}
+    </div>
+  );
+}
+
 // --- Page -------------------------------------------------------------------
 
 export function JourneyView({ journey }: { journey: Journey }) {
+  const [selected, setSelected] = React.useState<number | null>(null);
+
   const totalEarned = journey.years.reduce((s, y) => s + y.income, 0);
   const totalSaved = journey.years.reduce((s, y) => s + y.saved, 0);
 
   const monthsInTraj = new Set(journey.trajectory.map((p) => p.month));
-  const boundaries = journey.years
+  const allBoundaries = journey.years
     .filter((y) => y.year >= 2 && monthsInTraj.has(y.startISO.slice(0, 7)))
     .map((y) => ({ month: y.startISO.slice(0, 7), year: y.year }));
 
   const freshChapter = journey.dayInCurrentYear <= 2;
+  const yearPct = Math.max(2, Math.min(100, Math.round((journey.dayInCurrentYear / 365) * 100)));
+
+  // What the chart / timeline / cards show, driven by the selected year.
+  const shownPoints = selected == null ? journey.trajectory : journey.trajectory.filter((p) => p.year === selected);
+  const shownBoundaries = selected == null ? allBoundaries : [];
+  const shownMilestones = selected == null ? journey.milestones : journey.milestones.filter((m) => m.year === selected);
+  const shownYears = selected == null ? journey.years : journey.years.filter((y) => y.year === selected);
+  const scope = selected == null ? "The climb" : `Year ${selected} net worth`;
+  const milestoneScope = selected == null ? "Milestones" : `Year ${selected} milestones`;
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Yearly Journey"
-        description="Your financial story since you landed — net worth, milestones, and every year in review."
+        description="Your financial story since you landed. Net worth, milestones, and every year in review."
       />
 
       {/* Celebration hero */}
       <Reveal>
         <Card className="surface sheen relative overflow-hidden py-0">
-          <div className="pointer-events-none absolute -right-16 -top-24 size-80 rounded-full grad-brand opacity-20 blur-3xl" aria-hidden />
+          <div className="pointer-events-none absolute -right-16 -top-24 size-80 animate-drift rounded-full grad-brand opacity-20 blur-3xl" aria-hidden />
+          <div className="pointer-events-none absolute -left-20 bottom-[-6rem] size-72 animate-float rounded-full opacity-15 blur-3xl" style={{ background: "var(--chart-2)" }} aria-hidden />
+          {freshChapter ? <Confetti /> : null}
           <div className="relative flex flex-col gap-6 p-7 md:flex-row md:items-center md:justify-between">
             <div className="min-w-0">
               <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -284,13 +390,23 @@ export function JourneyView({ journey }: { journey: Journey }) {
                 <CountUp value={journey.currentNetWorth} cents />
               </div>
               <p className="mt-2 text-sm text-muted-foreground">
-                Built{" "}
+                Total net worth, savings and investments included. Built{" "}
                 <span className={journey.builtSinceArrival >= 0 ? "font-semibold text-positive" : "font-semibold text-negative"}>
                   {fmtMoney(journey.builtSinceArrival, { sign: true })}
                 </span>{" "}
                 since you landed on {fmtDate(journey.anchor, "long")}
-                {freshChapter ? " — a new chapter starts today. 🎉" : "."}
+                {freshChapter ? ". A new chapter starts today." : "."}
               </p>
+              {/* Progress through the current year */}
+              <div className="mt-4 max-w-sm">
+                <div className="mb-1 flex items-center justify-between text-[0.65rem] font-medium uppercase tracking-wider text-muted-foreground">
+                  <span>Into Year {journey.currentYear}</span>
+                  <span>{journey.dayInCurrentYear} / 365 days</span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-secondary">
+                  <div className="h-full animate-shine rounded-full" style={{ width: `${yearPct}%`, backgroundImage: "linear-gradient(90deg, var(--brand-1), var(--brand-2), var(--brand-3), var(--brand-1))" }} />
+                </div>
+              </div>
             </div>
             <div className="grid shrink-0 grid-cols-3 gap-4 md:border-l md:border-border/60 md:pl-8">
               <div>
@@ -303,9 +419,7 @@ export function JourneyView({ journey }: { journey: Journey }) {
               </div>
               <div>
                 <p className="text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground">Peak</p>
-                <p className="mt-1 text-xl font-semibold tnum sm:text-2xl">
-                  {journey.peak ? fmtMoney(journey.peak.netWorth) : "—"}
-                </p>
+                <p className="mt-1 text-xl font-semibold tnum sm:text-2xl">{journey.peak ? fmtMoney(journey.peak.netWorth) : "n/a"}</p>
               </div>
             </div>
           </div>
@@ -315,88 +429,69 @@ export function JourneyView({ journey }: { journey: Journey }) {
       {/* Journey stat strip */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Reveal delay={60} className="h-full">
-          <StatCard
-            label="Days in the US"
-            value={<span className="tnum">{journey.daysInUS.toLocaleString()}</span>}
-            hint={`Since ${fmtDate(journey.anchor, "medium")}`}
-            icon={<CalendarDays />}
-          />
+          <StatCard label="Days in the US" value={<span className="tnum">{journey.daysInUS.toLocaleString()}</span>} hint={`Since ${fmtDate(journey.anchor, "medium")}`} icon={<CalendarDays />} />
         </Reveal>
         <Reveal delay={120} className="h-full">
-          <StatCard
-            label="Net worth built"
-            value={<CountUp value={journey.builtSinceArrival} />}
-            hint="Beyond your arrival funds"
-            accent={journey.builtSinceArrival >= 0 ? "positive" : "negative"}
-            icon={<TrendingUp />}
-            iconClassName="bg-positive"
-          />
+          <StatCard label="Net worth built" value={<CountUp value={journey.builtSinceArrival} />} hint="Beyond your arrival funds" accent={journey.builtSinceArrival >= 0 ? "positive" : "negative"} icon={<TrendingUp />} iconClassName="bg-positive" />
         </Reveal>
         <Reveal delay={180} className="h-full">
-          <StatCard
-            label="Total earned"
-            value={<CountUp value={totalEarned} />}
-            hint="Across your whole journey"
-            accent="positive"
-            icon={<Coins />}
-          />
+          <StatCard label="Total earned" value={<CountUp value={totalEarned} />} hint="Across your whole journey" accent="positive" icon={<Coins />} />
         </Reveal>
         <Reveal delay={240} className="h-full">
-          <StatCard
-            label="Total saved"
-            value={<CountUp value={totalSaved} />}
-            hint="Investments + vault"
-            accent="positive"
-            icon={<PiggyBank />}
-            iconClassName="bg-positive"
-          />
+          <StatCard label="Total saved" value={<CountUp value={totalSaved} />} hint="Investments and vault" accent="positive" icon={<PiggyBank />} iconClassName="bg-positive" />
         </Reveal>
       </div>
 
-      {/* Net worth journey + milestones */}
-      <Reveal delay={300}>
+      {/* Year selector: revisit any year */}
+      <Reveal delay={280}>
+        <YearSelector years={journey.years} selected={selected} onSelect={setSelected} currentYear={journey.currentYear} />
+      </Reveal>
+
+      {/* Net worth journey + milestones (respond to the selected year) */}
+      <div key={selected ?? "all"} className="space-y-6 animate-in fade-in-0 duration-500">
         <div className="grid gap-4 lg:grid-cols-5">
           <Card className="surface lg:col-span-3">
             <CardHeader>
-              <CardTitle>The climb</CardTitle>
+              <CardTitle>{scope}</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Your net worth month by month, with each anniversary marked.
+                Total net worth month by month{selected == null ? ", with each anniversary marked." : "."}
               </p>
             </CardHeader>
             <CardContent>
-              <JourneyChart points={journey.trajectory} boundaries={boundaries} />
+              {shownPoints.length ? (
+                <JourneyChart points={shownPoints} boundaries={shownBoundaries} />
+              ) : (
+                <p className="py-16 text-center text-sm text-muted-foreground">No net worth movement recorded yet this year.</p>
+              )}
               <p className="mt-3 border-t border-border/60 pt-3 text-xs text-muted-foreground">
-                Net worth = spendable funds across the accounts you count toward net worth — the same figure as your
-                dashboard.
+                Net worth is everything you own minus what you owe: cash, checking, savings and investments, less card balances.
               </p>
             </CardContent>
           </Card>
           <Card className="surface lg:col-span-2">
             <CardHeader>
-              <CardTitle>Milestones</CardTitle>
+              <CardTitle>{milestoneScope}</CardTitle>
               <p className="text-sm text-muted-foreground">The moments that mattered.</p>
             </CardHeader>
             <CardContent>
-              <Timeline milestones={journey.milestones} />
+              <Timeline milestones={shownMilestones} />
             </CardContent>
           </Card>
         </div>
-      </Reveal>
 
-      {/* Year by year */}
-      <Reveal delay={360}>
+        {/* Year by year */}
         <div className="space-y-3">
           <div className="flex items-center gap-3">
             <span className="h-6 w-1.5 rounded-full grad-brand" aria-hidden />
-            <h2 className="text-xl font-bold tracking-tight">Year by year</h2>
+            <h2 className="text-xl font-bold tracking-tight">{selected == null ? "Year by year" : `Year ${selected} in review`}</h2>
           </div>
-          <div className="grid gap-4 lg:grid-cols-2">
-            {journey.years.map((y) => (
+          <div className={cn("grid gap-4", selected == null && "lg:grid-cols-2")}>
+            {shownYears.map((y) => (
               <YearCard key={y.year} y={y} />
             ))}
           </div>
         </div>
-      </Reveal>
+      </div>
     </div>
   );
 }

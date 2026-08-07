@@ -22,6 +22,7 @@ export function SettingsForm({ settings }: { settings: SettingsRow }) {
   const [startingFunds, setStartingFunds] = React.useState(String(settings.starting_funds));
   const [budgetMonths, setBudgetMonths] = React.useState(String(settings.budget_months));
   const [savingsTarget, setSavingsTarget] = React.useState(String(settings.savings_target));
+  const [arrivalDate, setArrivalDate] = React.useState(settings.arrival_date ?? "");
 
   const funds = Number(startingFunds);
   const months = Number(budgetMonths);
@@ -38,6 +39,7 @@ export function SettingsForm({ settings }: { settings: SettingsRow }) {
       starting_funds: startingFunds,
       budget_months: budgetMonths,
       savings_target: savingsTarget,
+      arrival_date: arrivalDate,
     };
     start(async () => {
       const res = await updateSettings(input);
@@ -127,6 +129,16 @@ export function SettingsForm({ settings }: { settings: SettingsRow }) {
               onChange={(e) => setSavingsTarget(e.target.value)}
               placeholder="0.00"
             />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="arrival_date">Arrival date in the US</Label>
+            <Input
+              id="arrival_date"
+              type="date"
+              value={arrivalDate}
+              onChange={(e) => setArrivalDate(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">Anchors your Yearly Journey. Leave blank to use your first transaction.</p>
           </div>
         </fieldset>
       </CardContent>

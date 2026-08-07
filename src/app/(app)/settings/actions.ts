@@ -22,6 +22,12 @@ const settingsSchema = z.object({
   starting_funds: z.coerce.number().min(0, "Starting funds can't be negative."),
   budget_months: z.coerce.number().int("Budget months must be a whole number.").min(1, "Budget months must be at least 1."),
   savings_target: z.coerce.number().min(0, "Savings target can't be negative."),
+  // Arrival date anchors the Yearly Journey. Empty string clears it (falls back
+  // to the earliest transaction); a yyyy-MM-dd string sets it.
+  arrival_date: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? null : v),
+    z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a valid date.").nullable(),
+  ).optional(),
 });
 
 export type SettingsInput = z.input<typeof settingsSchema>;
@@ -38,7 +44,7 @@ export async function updateSettings(input: SettingsInput): Promise<ActionResult
     .eq("user_id", user.id);
   if (error) return { ok: false, error: error.message };
 
-  for (const p of ["/settings", "/", "/budget"]) revalidatePath(p);
+  for (const p of ["/settings", "/", "/budget", "/journey"]) revalidatePath(p);
   return { ok: true };
 }
 

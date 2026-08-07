@@ -28,11 +28,11 @@ const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/transactions", label: "Transactions", icon: ReceiptText },
   { href: "/insights", label: "Insights", icon: PieChart },
-  { href: "/journey", label: "Yearly Journey", icon: Sparkles },
   { href: "/budget", label: "Budget", icon: Target },
   { href: "/accounts", label: "Accounts", icon: Landmark },
-  { href: "/india", label: "India Transfers", icon: Globe },
+  { href: "/journey", label: "Yearly Journey", icon: Sparkles },
   { href: "/debtors", label: "Debtors", icon: Users },
+  { href: "/india", label: "India Transfers", icon: Globe },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

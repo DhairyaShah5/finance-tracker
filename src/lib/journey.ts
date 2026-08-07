@@ -1,34 +1,33 @@
-// Yearly Journey - a narrative, milestone-driven view of the financial life you
+// Yearly Journey. A narrative, milestone-driven view of the financial life you
 // have built since landing in the US. Everything here is a PURE derivation over
 // the same ledger the rest of the app uses (no I/O), grouped by US-ANNIVERSARY
 // year rather than calendar year: Year 1 runs from your arrival date to the day
-// before your first anniversary, and so on. The anchor (arrival date) is read
-// from the data itself - the earliest arrival deposit - so the grouping is always
-// honest and needs no hand-entered config.
+// before your first anniversary, and so on.
+//
+// "Net worth" here means TOTAL net worth: every account (checking, savings,
+// investments, cash) minus what you owe on cards. Savings and investments count,
+// including money routed into an investment account by a category-linked outflow.
+//
+// The arrival date comes from Settings when set; otherwise it is read from the
+// data itself (the earliest arrival deposit, then the earliest transaction).
 
 import { addDays, addYears, differenceInCalendarDays, format, parseISO } from "date-fns";
 import type {
-  AccountRow,
   CategoryRow,
+  InflowTypeRow,
   IndiaTransferRow,
   TransactionRow,
 } from "@/lib/database.types";
-import {
-  isArrivalDeposit,
-  isRefund,
-  isSavingsTxn,
-  monthlyBalances,
-  myAmount,
-  signed,
-} from "@/lib/calc";
+import { isArrivalDeposit, isRefund, isSavingsTxn, myAmount, signed } from "@/lib/calc";
 import { monthLabel } from "@/lib/format";
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+const isValidISO = (s: string | null | undefined): s is string => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
 
 /**
- * The day the journey started: the earliest ARRIVAL deposit (the wire from home /
- * forex card / opening cash you landed with), falling back to the earliest
- * transaction of any kind. Returns an ISO date, or null when there's no data.
+ * Fallback arrival date read from the data: the earliest ARRIVAL deposit (the
+ * wire from home / forex card / opening cash you landed with), then the earliest
+ * transaction of any kind. Returns an ISO date, or null when there is no data.
  */
 export function journeyAnchor(
   txns: Pick<TransactionRow, "txn_date" | "description">[],
@@ -43,28 +42,41 @@ export function journeyAnchor(
 }
 
 /**
- * Net worth at the END of `iso` (inclusive). Works backward from the ground-truth
- * current net worth by subtracting every net-worth-account flow dated after `iso`
- * - the same anchoring monthlyBalances() and the dashboard use, so the arc always
- * closes on today's real number.
+ * The effect of one transaction on TOTAL net worth (all accounts). A normal
+ * outflow lowers it; an inflow raises it; a transfer between two of your accounts
+ * nets to zero across its two rows. A category-linked outflow (money routed into
+ * an investment / savings account) leaves the source but lands in the linked
+ * account, so it is net-neutral to total net worth.
+ */
+function wealthDelta(t: TransactionRow, linkedCatIds: Set<string>): number {
+  let d = signed(t);
+  if (t.direction === "outflow" && !t.is_transfer && t.category_id && linkedCatIds.has(t.category_id)) {
+    d += t.amount; // the money re-appears in the linked destination account
+  }
+  return d;
+}
+
+/**
+ * Total net worth at the END of `iso` (inclusive). Works backward from the
+ * ground-truth current total by subtracting every flow dated after `iso`, so the
+ * arc always closes on today's real number.
  */
 export function netWorthAsOf(
-  txns: Pick<TransactionRow, "txn_date" | "account_id" | "direction" | "amount">[],
-  nwIds: Set<string>,
-  netWorth: number,
+  txns: TransactionRow[],
+  linkedCatIds: Set<string>,
+  total: number,
   iso: string,
 ): number {
   let after = 0;
   for (const t of txns) {
-    if (!nwIds.has(t.account_id) || t.txn_date <= iso) continue;
-    after += signed(t);
+    if (t.txn_date <= iso) continue;
+    after += wealthDelta(t, linkedCatIds);
   }
-  return round2(netWorth - after);
+  return round2(total - after);
 }
 
 interface WindowStats {
   income: number; // earned income (arrival + refunds excluded), matching reconcile()
-  arrival: number; // starting funds you landed with, if the window contains arrival
   spending: number; // your net share of non-savings consumption (refunds netted out)
   saved: number; // your share of savings / investment outflows
 }
@@ -72,24 +84,18 @@ interface WindowStats {
 /** Income / spending / saved for the half-open window [start, endExclusive). */
 function windowStats(txns: TransactionRow[], start: string, endExclusive: string): WindowStats {
   let income = 0;
-  let arrival = 0;
   let spending = 0;
   let saved = 0;
   for (const t of txns) {
     if (t.txn_date < start || t.txn_date >= endExclusive) continue;
     if (t.is_transfer) continue;
-    if (isRefund(t)) {
-      spending -= t.amount; // a return reduces your net cost, not income
-    } else if (t.direction === "inflow") {
-      if (isArrivalDeposit(t)) arrival += t.amount;
-      else income += t.amount;
-    } else if (isSavingsTxn(t)) {
-      saved += myAmount(t);
-    } else {
-      spending += myAmount(t);
-    }
+    if (isRefund(t)) spending -= t.amount;
+    else if (t.direction === "inflow") {
+      if (!isArrivalDeposit(t)) income += t.amount;
+    } else if (isSavingsTxn(t)) saved += myAmount(t);
+    else spending += myAmount(t);
   }
-  return { income: round2(income), arrival: round2(arrival), spending: round2(spending), saved: round2(saved) };
+  return { income: round2(income), spending: round2(spending), saved: round2(saved) };
 }
 
 /** Top spending category (your share) within [start, endExclusive). */
@@ -116,6 +122,18 @@ function topCategory(
   return best;
 }
 
+/** Earliest transaction matching a predicate (by txn_date, then created_at). */
+function earliestTxn(txns: TransactionRow[], pred: (t: TransactionRow) => boolean): TransactionRow | null {
+  let best: TransactionRow | null = null;
+  for (const t of txns) {
+    if (!pred(t)) continue;
+    if (!best || t.txn_date < best.txn_date || (t.txn_date === best.txn_date && t.created_at < best.created_at)) best = t;
+  }
+  return best;
+}
+
+const TRIP_RE = /\b(trav|trip|flight|vacation|holiday|tour|explore|getaway)\b/i;
+
 export interface JourneyYear {
   year: number; // 1-based (Year 1 = your first year in the US)
   label: string; // "Year 1"
@@ -125,16 +143,16 @@ export interface JourneyYear {
   days: number; // days elapsed in this year so far
   startNetWorth: number;
   endNetWorth: number;
-  growth: number; // endNetWorth − startNetWorth
-  growthPct: number | null; // null when starting from ~zero
+  growth: number; // endNetWorth minus startNetWorth
+  growthPct: number | null; // null when starting from about zero
   income: number;
   spending: number;
   saved: number;
-  net: number; // income − spending − saved (money kept)
-  savingsRate: number | null; // net ÷ income
+  net: number; // income minus spending minus saved (money kept)
+  savingsRate: number | null; // net over income
   indiaReceivedUsd: number;
   indiaSentUsd: number;
-  indiaNetUsd: number; // received − sent (money that flowed in from home)
+  indiaNetUsd: number; // received minus sent (money that flowed in from home)
   topCategory: { name: string; total: number } | null;
   months: number; // distinct months with activity
 }
@@ -147,48 +165,65 @@ export interface NetWorthPoint {
   year: number; // which journey-year this month falls in
 }
 
+export type MilestoneKind =
+  | "arrival"
+  | "income"
+  | "invest"
+  | "job"
+  | "trip"
+  | "networth"
+  | "anniversary"
+  | "peak";
+
 export interface Milestone {
   date: string; // ISO
-  kind: "arrival" | "networth" | "anniversary" | "peak";
+  kind: MilestoneKind;
   title: string;
   detail?: string;
   amount?: number;
+  year: number; // journey-year this milestone falls in
 }
 
 export interface Journey {
   anchor: string; // arrival date (ISO)
+  anchorSource: "settings" | "derived"; // where the arrival date came from
   today: string;
   daysInUS: number;
-  currentYear: number; // the year number you're currently living
+  currentYear: number; // the year number you are currently living
   dayInCurrentYear: number;
-  currentNetWorth: number;
+  currentNetWorth: number; // total across every account
   arrivalCapital: number; // what you landed with
-  builtSinceArrival: number; // currentNetWorth − arrivalCapital
+  builtSinceArrival: number; // currentNetWorth minus arrivalCapital
   peak: { netWorth: number; month: string; label: string } | null;
   years: JourneyYear[]; // newest first
-  trajectory: NetWorthPoint[]; // oldest → newest
-  milestones: Milestone[]; // oldest → newest
+  trajectory: NetWorthPoint[]; // oldest to newest
+  milestones: Milestone[]; // oldest to newest
 }
 
 const NW_THRESHOLDS = [1000, 5000, 10000, 25000, 50000, 100000, 250000];
 
 /**
- * Assemble the whole journey. `netWorth` is the canonical available-funds net
- * worth (sum of accounts flagged into net worth) - the same figure the dashboard
- * and reconcile() use. `today` is passed in (todayISO()) to keep this pure.
+ * Assemble the whole journey. `netWorth` is the TOTAL net worth (sum of every
+ * account balance, including savings and investments). `today` and
+ * `arrivalOverride` are passed in to keep this pure.
  */
 export function buildJourney(
   txns: TransactionRow[],
-  accounts: AccountRow[],
   india: IndiaTransferRow[],
   categories: CategoryRow[],
+  inflowTypes: InflowTypeRow[],
   netWorth: number,
   today: string,
+  arrivalOverride: string | null,
 ): Journey | null {
-  const anchor = journeyAnchor(txns);
-  if (!anchor || !txns.length) return null;
+  if (!txns.length) return null;
+  const derived = journeyAnchor(txns);
+  const anchor = isValidISO(arrivalOverride) ? arrivalOverride : derived;
+  if (!anchor) return null;
+  const anchorSource: Journey["anchorSource"] = isValidISO(arrivalOverride) ? "settings" : "derived";
 
-  const nwIds = new Set(accounts.filter((a) => a.include_in_net_worth).map((a) => a.id));
+  const linkedCatIds = new Set(categories.filter((c) => c.linked_account_id).map((c) => c.id));
+  const inflowName = new Map(inflowTypes.map((i) => [i.id, i.name]));
   const anchorDate = parseISO(anchor);
 
   // Year-start dates: arrival, then each anniversary that has already happened.
@@ -198,7 +233,7 @@ export function buildJourney(
     if (s > today) break;
     starts.push(s);
   }
-  if (!starts.length) starts.push(anchor); // defensive: anchor should always be ≤ today
+  if (!starts.length) starts.push(anchor);
 
   const yearIndexOf = (iso: string) => {
     let idx = 0;
@@ -206,10 +241,9 @@ export function buildJourney(
     return idx + 1;
   };
 
-  // Per-year rollups (built oldest → newest, returned newest first).
+  // Per-year rollups (built oldest to newest, returned newest first).
   const years: JourneyYear[] = [];
-  let prevEndNetWorth = netWorthAsOf(txns, nwIds, netWorth, format(addDays(anchorDate, -1), "yyyy-MM-dd"));
-  const arrivalStartNetWorth = prevEndNetWorth; // ~0: your US net worth before landing
+  let prevEndNetWorth = netWorthAsOf(txns, linkedCatIds, netWorth, format(addDays(anchorDate, -1), "yyyy-MM-dd"));
 
   for (let i = 0; i < starts.length; i++) {
     const startISO = starts[i];
@@ -217,8 +251,8 @@ export function buildJourney(
     const nextStartISO = format(addYears(anchorDate, i + 1), "yyyy-MM-dd");
     const endISO = isCurrent ? today : format(addDays(parseISO(nextStartISO), -1), "yyyy-MM-dd");
 
-    const startNetWorth = i === 0 ? arrivalStartNetWorth : prevEndNetWorth;
-    const endNetWorth = netWorthAsOf(txns, nwIds, netWorth, endISO);
+    const startNetWorth = prevEndNetWorth;
+    const endNetWorth = netWorthAsOf(txns, linkedCatIds, netWorth, endISO);
     prevEndNetWorth = endNetWorth;
 
     const s = windowStats(txns, startISO, nextStartISO);
@@ -263,17 +297,26 @@ export function buildJourney(
     });
   }
 
-  // Net-worth trajectory: monthly closing balances (same engine the dashboard's
-  // "Balance over time" uses), tagged with the journey-year each month falls in.
-  const trajectory: NetWorthPoint[] = [...monthlyBalances(txns, nwIds, netWorth).entries()]
-    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
-    .map(([month, b]) => ({
+  // Total-net-worth trajectory: monthly closing totals, tagged by journey-year.
+  const byMonth = new Map<string, number>();
+  let totalDelta = 0;
+  for (const t of txns) {
+    const d = wealthDelta(t, linkedCatIds);
+    totalDelta += d;
+    const k = t.txn_date.slice(0, 7);
+    byMonth.set(k, round2((byMonth.get(k) ?? 0) + d));
+  }
+  let running = round2(netWorth - totalDelta);
+  const trajectory: NetWorthPoint[] = [...byMonth.keys()].sort().map((month) => {
+    running = round2(running + (byMonth.get(month) ?? 0));
+    return {
       month,
       label: monthLabel(month).split(" ")[0],
       fullLabel: monthLabel(month),
-      netWorth: b.closing,
+      netWorth: running,
       year: yearIndexOf(`${month}-01`),
-    }));
+    };
+  });
 
   const peak = trajectory.reduce<Journey["peak"]>((best, p) => {
     if (!best || p.netWorth > best.netWorth) return { netWorth: p.netWorth, month: p.month, label: p.fullLabel };
@@ -284,52 +327,85 @@ export function buildJourney(
     txns.filter((t) => t.direction === "inflow" && isArrivalDeposit(t)).reduce((s, t) => s + t.amount, 0),
   );
 
-  // Milestones - a data-driven narrative, oldest → newest.
+  // ------- Milestones: a data-driven, sentimental narrative (oldest first) ----
   const milestones: Milestone[] = [];
-  milestones.push({
-    date: anchor,
-    kind: "arrival",
-    title: "Landed in the USA",
-    detail: arrivalCapital > 0 ? "Started the journey with your arrival funds" : "Where the journey began",
-    amount: arrivalCapital > 0 ? arrivalCapital : undefined,
-  });
-  // First month each net-worth threshold was crossed (only those actually reached).
+  const push = (date: string, kind: MilestoneKind, title: string, detail?: string, amount?: number) =>
+    milestones.push({ date, kind, title, detail, amount, year: yearIndexOf(date) });
+
+  push(
+    anchor,
+    "arrival",
+    "Landed in the USA",
+    arrivalCapital > 0 ? "The journey begins, with the funds you brought" : "The journey begins",
+    arrivalCapital > 0 ? arrivalCapital : undefined,
+  );
+
+  // First dollars earned (any real income, arrival and refunds excluded).
+  const firstIncome = earliestTxn(
+    txns,
+    (t) => t.direction === "inflow" && !t.is_transfer && !isRefund(t) && !isArrivalDeposit(t),
+  );
+  if (firstIncome) {
+    const src = firstIncome.inflow_type_id ? inflowName.get(firstIncome.inflow_type_id) : null;
+    push(firstIncome.txn_date, "income", "Earned your first dollars", src ? `From ${src}` : "Your first income in America", firstIncome.amount);
+  }
+
+  // First paycheck from each real job / paycheck source (a new source landing is
+  // "you found an internship / an on-campus job"). Skip the source that already
+  // owns the first-dollars milestone so it is not shown twice.
+  const paycheckTypeIds = new Set(inflowTypes.filter((i) => i.is_paycheck).map((i) => i.id));
+  const firstIncomeTypeId = firstIncome?.inflow_type_id ?? null;
+  const seenTypes = new Set<string>();
+  for (const t of [...txns].sort((a, b) => (a.txn_date < b.txn_date ? -1 : a.txn_date > b.txn_date ? 1 : a.created_at < b.created_at ? -1 : 1))) {
+    if (t.direction !== "inflow" || t.is_transfer || isRefund(t) || isArrivalDeposit(t)) continue;
+    const id = t.inflow_type_id;
+    if (!id || !paycheckTypeIds.has(id) || seenTypes.has(id)) continue;
+    seenTypes.add(id);
+    if (id === firstIncomeTypeId) continue; // already covered by "first dollars"
+    const name = inflowName.get(id) ?? "a new job";
+    push(t.txn_date, "job", `First paycheck from ${name}`, "A new income source begins", t.amount);
+  }
+
+  // First dollars invested / set aside.
+  const firstInvest = earliestTxn(txns, (t) => t.direction === "outflow" && !t.is_transfer && isSavingsTxn(t) && myAmount(t) > 0);
+  if (firstInvest) {
+    push(firstInvest.txn_date, "invest", "Invested your first dollars", firstInvest.description || "Money set aside for the future", myAmount(firstInvest));
+  }
+
+  // First trip (first spend in a travel-ish category).
+  const tripCatIds = new Set(categories.filter((c) => TRIP_RE.test(c.name)).map((c) => c.id));
+  if (tripCatIds.size) {
+    const firstTrip = earliestTxn(
+      txns,
+      (t) => t.direction === "outflow" && !t.is_transfer && !!t.category_id && tripCatIds.has(t.category_id) && myAmount(t) > 0,
+    );
+    if (firstTrip) push(firstTrip.txn_date, "trip", "Your first trip", firstTrip.description || "Time to explore", myAmount(firstTrip));
+  }
+
+  // Net-worth thresholds actually reached (first month each was crossed).
   let ti = 0;
   for (const p of trajectory) {
     while (ti < NW_THRESHOLDS.length && p.netWorth >= NW_THRESHOLDS[ti]) {
-      milestones.push({
-        date: `${p.month}-15`,
-        kind: "networth",
-        title: `Crossed ${fmtK(NW_THRESHOLDS[ti])} net worth`,
-        detail: `Reached in ${p.fullLabel}`,
-        amount: NW_THRESHOLDS[ti],
-      });
+      push(`${p.month}-15`, "networth", `Crossed ${fmtK(NW_THRESHOLDS[ti])} net worth`, `Reached in ${p.fullLabel}`, NW_THRESHOLDS[ti]);
       ti++;
     }
   }
-  // Anniversaries already reached (starts[1..] are past anniversaries).
+
+  // Anniversaries already reached.
   for (let k = 1; k < starts.length; k++) {
-    milestones.push({
-      date: starts[k],
-      kind: "anniversary",
-      title: `${k} year${k === 1 ? "" : "s"} in the USA`,
-      detail: k === starts.length - 1 ? "A new chapter begins" : "Another year in the books",
-    });
+    push(starts[k], "anniversary", `${k} year${k === 1 ? "" : "s"} in the USA`, k === starts.length - 1 ? "A new chapter begins" : "Another year in the books");
   }
-  // Peak, only when you've since come off it (otherwise it's just "today").
+
+  // Peak, only when you have since come off it.
   if (peak && trajectory.length && peak.month !== trajectory[trajectory.length - 1].month) {
-    milestones.push({
-      date: `${peak.month}-28`,
-      kind: "peak",
-      title: "All-time high net worth",
-      detail: peak.label,
-      amount: peak.netWorth,
-    });
+    push(`${peak.month}-28`, "peak", "All-time high net worth", peak.label, peak.netWorth);
   }
+
   milestones.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : rank(a.kind) - rank(b.kind)));
 
   return {
     anchor,
+    anchorSource,
     today,
     daysInUS: differenceInCalendarDays(parseISO(today), anchorDate) + 1,
     currentYear: starts.length,
@@ -344,8 +420,9 @@ export function buildJourney(
   };
 }
 
-function rank(kind: Milestone["kind"]): number {
-  return kind === "arrival" ? 0 : kind === "anniversary" ? 1 : kind === "networth" ? 2 : 3;
+function rank(kind: MilestoneKind): number {
+  const order: MilestoneKind[] = ["arrival", "income", "job", "invest", "trip", "networth", "anniversary", "peak"];
+  return order.indexOf(kind);
 }
 
 /** Compact "$5k" / "$250k" label for round thresholds. */
