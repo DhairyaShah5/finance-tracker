@@ -194,8 +194,9 @@ export interface NetWorthPoint {
   month: string; // 'YYYY-MM'
   label: string; // 'Aug'
   fullLabel: string; // 'Aug 2025'
-  netWorth: number; // US total across every account
-  trueNetWorth: number; // netWorth minus family debt outstanding at this point
+  netWorth: number; // US total across every account (what you own)
+  debt: number; // family debt owed at this point (received minus sent, what you owe home)
+  trueNetWorth: number; // netWorth minus debt (net position; debt free when this hits 0)
   year: number; // which journey-year this month falls in
 }
 
@@ -384,12 +385,14 @@ export function buildJourney(
   let running = round2(netWorth - totalDelta);
   const trajectory: NetWorthPoint[] = [...byMonth.keys()].sort().map((month) => {
     running = round2(running + (byMonth.get(month) ?? 0));
+    const debt = netDebtThroughMonth(month);
     return {
       month,
       label: monthLabel(month).split(" ")[0],
       fullLabel: monthLabel(month),
       netWorth: running,
-      trueNetWorth: round2(running - netDebtThroughMonth(month)),
+      debt,
+      trueNetWorth: round2(running - debt),
       year: yearIndexOf(`${month}-01`),
     };
   });
