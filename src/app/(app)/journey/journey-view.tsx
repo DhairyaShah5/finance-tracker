@@ -111,11 +111,13 @@ function JourneyTip({ active, payload }: { active?: boolean; payload?: Array<{ p
         <div className="flex items-center gap-2">
           <span className="size-2.5 rounded-full" style={{ background: "var(--negative)" }} />
           <span className="text-muted-foreground">Debt owed home</span>
-          <span className="ml-auto font-semibold tnum text-negative">{fmtMoney(p.debt, { cents: true })}</span>
+          <span className="ml-auto font-semibold tnum text-negative">{fmtMoney(-p.debt, { cents: true })}</span>
         </div>
-        <div className="mt-0.5 flex items-center gap-2 border-t border-border/60 pt-1 text-muted-foreground/80">
-          <span>Still to close</span>
-          <span className="ml-auto tnum">{fmtMoney(Math.max(0, p.debt - p.netWorth), { cents: true })}</span>
+        <div className="mt-0.5 flex items-center gap-2 border-t border-border/60 pt-1">
+          <span className="text-muted-foreground">Net position</span>
+          <span className={cn("ml-auto font-semibold tnum", p.trueNetWorth < 0 && "text-negative")}>
+            {fmtMoney(p.trueNetWorth, { cents: true })}
+          </span>
         </div>
       </div>
     </div>
@@ -130,25 +132,32 @@ function JourneyChart({
   boundaries: { month: string; year: number }[];
 }) {
   const monthToLabel = new Map(points.map((p) => [p.month, p.label]));
-  // Fit both lines (net worth and debt), always including 0.
-  const vals = points.flatMap((p) => [p.netWorth, p.debt]);
+  // Debt sits BELOW zero (you owe it); net worth above. Keep 0 in view as the divider.
+  const data = points.map((p) => ({ ...p, debtNeg: -p.debt }));
+  const vals = data.flatMap((p) => [p.netWorth, p.debtNeg]);
   const rawLo = Math.min(0, ...vals);
   const rawHi = Math.max(0, ...vals);
   const pad = Math.max(500, (rawHi - rawLo) * 0.08);
   const domain: [number, number] = [Math.floor(rawLo - pad), Math.ceil(rawHi + pad)];
   return (
     <ResponsiveContainer width="100%" height="100%" minHeight={340}>
-      <AreaChart data={points} margin={{ top: 18, right: 12, left: 4, bottom: 0 }}>
+      <AreaChart data={data} margin={{ top: 18, right: 12, left: 4, bottom: 0 }}>
         <defs>
           <linearGradient id="grad-nw" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="var(--chart-2)" stopOpacity={0.35} />
             <stop offset="100%" stopColor="var(--chart-2)" stopOpacity={0.03} />
+          </linearGradient>
+          <linearGradient id="grad-debt" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--negative)" stopOpacity={0.04} />
+            <stop offset="100%" stopColor="var(--negative)" stopOpacity={0.32} />
           </linearGradient>
         </defs>
         <CartesianGrid strokeDasharray="4 4" stroke="var(--border)" vertical={false} />
         <XAxis dataKey="month" tickFormatter={(m: string) => monthToLabel.get(m) ?? m} minTickGap={14} {...AXIS} dy={4} />
         <YAxis {...AXIS} width={56} tickFormatter={moneyTick} tickCount={9} domain={domain} />
         <Tooltip cursor={{ stroke: "var(--border)", strokeWidth: 1 }} content={<JourneyTip />} />
+        {/* Zero divider: own above, owe below. */}
+        <ReferenceLine y={0} stroke="var(--muted-foreground)" strokeOpacity={0.5} strokeDasharray="2 3" />
         {boundaries.map((b) => (
           <ReferenceLine
             key={b.month}
@@ -156,23 +165,23 @@ function JourneyChart({
             stroke="var(--primary)"
             strokeDasharray="4 4"
             strokeOpacity={0.6}
-            label={{ value: `Yr ${b.year}`, position: "insideBottom", fill: "var(--primary)", fontSize: 10, fontWeight: 600 }}
+            label={{ value: `Yr ${b.year}`, position: "insideTopRight", fill: "var(--primary)", fontSize: 10, fontWeight: 600 }}
           />
         ))}
-        {/* Debt you owe home: the line your net worth has to climb up to meet. */}
+        {/* Debt owed home, drawn below zero. Debt free is when net position reaches 0. */}
         <Area
           type="monotone"
-          dataKey="debt"
+          dataKey="debtNeg"
           name="Debt"
           stroke="var(--negative)"
           strokeWidth={2.5}
-          fill="var(--negative)"
-          fillOpacity={0}
+          fill="url(#grad-debt)"
+          baseValue={0}
           dot={false}
           activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--background)" }}
           animationDuration={1000}
         />
-        {/* What you own. Debt free is when this rises to meet the debt line. */}
+        {/* What you own, above zero. */}
         <Area
           type="monotone"
           dataKey="netWorth"
@@ -698,7 +707,7 @@ export function JourneyView({ journey }: { journey: Journey }) {
             <CardHeader>
               <CardTitle>{scope}</CardTitle>
               <p className="text-sm text-muted-foreground">
-                What you own and what you owe home, month by month. Debt free is when net worth rises to meet the debt line.
+                What you own (above zero) and what you owe home (below zero), month by month.
               </p>
             </CardHeader>
             <CardContent className="flex flex-1 flex-col">
@@ -720,8 +729,8 @@ export function JourneyView({ journey }: { journey: Journey }) {
                 )}
               </div>
               <p className="mt-3 border-t border-border/60 pt-3 text-xs text-muted-foreground">
-                The gap between the two lines is how much more you need to generate to wipe out the debt. Paying tuition from
-                savings lowers the net worth line, it does not raise the debt line.
+                Net worth sits above the line, debt below it. Your net position is the two combined, and you are debt free
+                when it reaches $0. Paying tuition from savings lowers the net worth line, it does not deepen the debt line.
               </p>
             </CardContent>
           </Card>
