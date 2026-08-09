@@ -9,7 +9,6 @@ import {
   Globe,
   Users,
   Settings,
-  Wallet,
   PieChart,
   Target,
   Sparkles,
@@ -17,6 +16,7 @@ import {
   LogOut,
   LogIn,
 } from "lucide-react";
+import { LogoGlyph } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -44,7 +44,7 @@ function Brand() {
   return (
     <Link href="/" className="group flex items-center gap-2.5 px-3">
       <span className="flex size-9 items-center justify-center rounded-xl grad-brand text-white shadow-md shadow-primary/30 transition-transform duration-300 group-hover:scale-105 group-hover:rotate-3">
-        <Wallet className="size-5" />
+        <LogoGlyph className="size-5" />
       </span>
       <span className="text-base font-bold tracking-tight grad-text">Finance Tracker</span>
     </Link>

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Wallet } from "lucide-react";
+import { LogoGlyph } from "@/components/logo";
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LoginForm } from "./login-form";
@@ -17,8 +17,8 @@ export default async function LoginPage() {
     <div className="flex min-h-dvh items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm space-y-6">
         <div className="flex flex-col items-center gap-3 text-center">
-          <span className="flex size-11 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Wallet className="size-5" />
+          <span className="flex size-11 items-center justify-center rounded-xl grad-brand text-white shadow-sm shadow-primary/30">
+            <LogoGlyph className="size-6" />
           </span>
           <div>
             <h1 className="text-xl font-semibold tracking-tight">Finance Tracker</h1>
