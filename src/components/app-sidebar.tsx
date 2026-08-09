@@ -144,7 +144,7 @@ export function AppSidebar({ email, readOnly }: { email: string; readOnly?: bool
       </aside>
 
       {/* Mobile top bar */}
-      <div className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-background/80 px-4 py-3 backdrop-blur lg:hidden">
+      <div className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-background/80 px-4 py-3 pt-[calc(0.75rem+env(safe-area-inset-top))] pl-[calc(1rem+env(safe-area-inset-left))] pr-[calc(1rem+env(safe-area-inset-right))] backdrop-blur lg:hidden">
         <Brand />
         <div className="flex items-center gap-1">
           <ThemeToggle />
@@ -154,7 +154,7 @@ export function AppSidebar({ email, readOnly }: { email: string; readOnly?: bool
                 <Menu className="size-4" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-64 gap-4 py-4">
+            <SheetContent side="left" className="w-64 gap-4 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
               <SheetTitle className="px-4">Menu</SheetTitle>
               <NavLinks onNavigate={() => setOpen(false)} />
               <SidebarFooter email={email} readOnly={readOnly} />

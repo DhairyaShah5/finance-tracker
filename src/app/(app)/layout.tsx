@@ -4,6 +4,8 @@ import Link from "next/link";
 import { getContext } from "@/lib/queries";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ReadOnlyProvider } from "@/components/read-only-context";
+import { RefreshOnFocus } from "@/components/refresh-on-focus";
+import { IosInstallHint } from "@/components/ios-install-hint";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   // Owner (signed in) gets full access; everyone else views the live data
@@ -18,6 +20,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <ReadOnlyProvider readOnly={readOnly}>
+      <RefreshOnFocus />
+      <IosInstallHint />
       <div className="flex min-h-dvh flex-col lg:flex-row">
         <AppSidebar email={user.email ?? "Signed in"} readOnly={readOnly} />
         <main className="flex-1 overflow-x-hidden">
@@ -33,7 +37,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               </span>
             </div>
           ) : null}
-          <div className="mx-auto w-full max-w-6xl animate-in fade-in-0 duration-500 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+          <div className="mx-auto w-full max-w-6xl animate-in fade-in-0 duration-500 px-4 pt-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] sm:px-6 lg:px-8 lg:py-8">
             {children}
           </div>
         </main>

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
@@ -15,8 +15,24 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://finances-mango.vercel.app"),
   title: "Finance Tracker",
   description: "Personal cash-flow, budget, and rewards tracker.",
+  // Full-screen home-screen launch on iOS + the label under the icon.
+  appleWebApp: { capable: true, title: "Finances", statusBarStyle: "default" },
+};
+
+export const viewport: Viewport = {
+  // Match the app background so the iOS status-bar strip blends into the header.
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#FAFCFE" },
+    { media: "(prefers-color-scheme: dark)", color: "#0B0E18" },
+  ],
+  width: "device-width",
+  initialScale: 1,
+  // Enables env(safe-area-inset-*) so content clears the notch / home indicator.
+  // maximumScale/userScalable left unset so pinch-zoom on tables still works.
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
