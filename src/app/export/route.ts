@@ -6,11 +6,11 @@ import { todayISO } from "@/lib/format";
 export const dynamic = "force-dynamic";
 
 // Owner-only export of the entire dataset as a styled .xlsx workbook (one tab
-// per page). Read-only viewers have a valid-but-readOnly context, so we reject
-// them explicitly - browsing the live app is public, bulk download is not.
+// per page). The app is private: no session -> no context -> 401, so this is
+// reachable only by the signed-in owner.
 export async function GET() {
   const ctx = await getContext();
-  if (!ctx || ctx.readOnly) {
+  if (!ctx) {
     return new NextResponse("Unauthorized", { status: 401 });
   }
   const { supabase, user } = ctx;

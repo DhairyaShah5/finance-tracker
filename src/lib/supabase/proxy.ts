@@ -3,10 +3,10 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/lib/database.types";
 
 /**
- * Refreshes the Supabase auth session on every request. The app is publicly
- * viewable in read-only mode, so there's no auth wall here: signed-in owners get
- * a fresh session (and full edit access); everyone else browses read-only. Write
- * access is enforced in the server actions, which require a real session.
+ * Refreshes the Supabase auth session on every request so the owner's cookies
+ * stay fresh. This does not gate access by itself: the app is private and the
+ * auth wall is enforced server-side (getContext returns null without a session,
+ * and the app layout redirects unauthenticated visitors to /welcome).
  */
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
