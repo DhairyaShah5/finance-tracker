@@ -31,7 +31,9 @@ export async function signUp(formData: FormData): Promise<AuthResult> {
   });
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
 
-  const origin = (await headers()).get("origin") ?? process.env.NEXT_PUBLIC_SITE_URL ?? "";
+  // Prefer the server-configured site URL so a forged Origin header can't poison
+  // the confirmation link; fall back to the request origin only in local dev.
+  const origin = process.env.NEXT_PUBLIC_SITE_URL ?? (await headers()).get("origin") ?? "";
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signUp({
     ...parsed.data,

@@ -81,7 +81,18 @@ async function resolveDebtorId(
   userId: string,
   data: z.output<typeof schema>,
 ): Promise<string | null> {
-  if (data.debtor_id) return data.debtor_id;
+  // Verify a passed debtor_id actually belongs to this user before linking to it
+  // (don't trust a client-supplied id and attach a transaction to someone else's
+  // debtor). RLS also blocks reading it, so an unowned id resolves to null.
+  if (data.debtor_id) {
+    const { data: owned } = await supabase
+      .from("debtors")
+      .select("id")
+      .eq("id", data.debtor_id)
+      .eq("user_id", userId)
+      .maybeSingle();
+    return owned?.id ?? null;
+  }
   const name = data.debtor_name?.trim();
   if (!name || data.whose_expense !== "Friend") return null;
   const { data: existing } = await supabase

@@ -188,6 +188,12 @@ export async function logTransfer(input: TransferInput): Promise<ActionResult> {
     .select("id, name, include_in_net_worth")
     .eq("user_id", user.id)
     .in("id", [d.from_account_id, d.to_account_id]);
+  // Both legs must be accounts this user owns - don't just read ownership, require
+  // it, so a transfer can't reference an account id that isn't yours.
+  const owned = new Set((accts ?? []).map((a) => a.id));
+  if (!owned.has(d.from_account_id) || !owned.has(d.to_account_id)) {
+    return { ok: false, error: "Account not found." };
+  }
   const nameOf = (id: string) => accts?.find((a) => a.id === id)?.name ?? "account";
   const note = d.note?.trim() || null;
   const amount = round2(d.amount);

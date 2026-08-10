@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { createServiceClient } from "@/lib/supabase/service";
 import type { Database } from "@/lib/database.types";
 
@@ -11,6 +12,13 @@ import type { Database } from "@/lib/database.types";
 // it returns 401 and inserts nothing, so it fails safe. Idempotent per week.
 
 export const dynamic = "force-dynamic";
+
+/** Constant-time string compare (avoids leaking the secret via timing). */
+function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  return ab.length === bb.length && timingSafeEqual(ab, bb);
+}
 
 type TxnInsert = Database["public"]["Tables"]["transactions"]["Insert"];
 
@@ -55,7 +63,7 @@ function nextIndex(descriptions: string[]): number {
 export async function GET(request: Request) {
   const cronSecret = process.env.CRON_SECRET;
   const authHeader = request.headers.get("authorization");
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || !authHeader || !safeEqual(authHeader, `Bearer ${cronSecret}`)) {
     return new Response("Unauthorized", { status: 401 });
   }
 
