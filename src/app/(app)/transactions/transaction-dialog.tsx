@@ -170,7 +170,10 @@ export function TransactionDialog({
       setDate(today());
       setAmount("");
       setDescription("");
-      setAccountId(lookups.accounts[0]?.id ?? "");
+      // New entries open on the Expense tab, and most spending rides on a credit
+      // card - so default to the first card (fall back to any account).
+      const firstCard = lookups.accounts.find((a) => a.is_credit);
+      setAccountId(firstCard?.id ?? lookups.accounts[0]?.id ?? "");
       setCategoryId(NONE);
       setBudgetGroup(NONE);
       setBudgetTouched(false);
