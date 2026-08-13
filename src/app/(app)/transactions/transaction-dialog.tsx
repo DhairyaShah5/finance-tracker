@@ -89,6 +89,8 @@ export interface TxnLookups {
   categories: CategoryRow[];
   inflowTypes: InflowTypeRow[];
   debtors: DebtorRow[];
+  /** transactions logged per category id - used to order the picker by frequency. */
+  categoryCounts: Record<string, number>;
 }
 
 export function TransactionDialog({
@@ -113,6 +115,9 @@ export function TransactionDialog({
   const [accountId, setAccountId] = React.useState("");
   const [categoryId, setCategoryId] = React.useState(NONE);
   const [budgetGroup, setBudgetGroup] = React.useState(NONE);
+  // Whether the user hand-picked Needs/Wants/Savings. Until they do, picking a
+  // category keeps the classification in sync with that category's default.
+  const [budgetTouched, setBudgetTouched] = React.useState(false);
   const [inflowTypeId, setInflowTypeId] = React.useState(NONE);
   const [whose, setWhose] = React.useState<string>("My");
   const [splitCount, setSplitCount] = React.useState("2");
@@ -148,6 +153,7 @@ export function TransactionDialog({
       setAccountId(existing.account_id);
       setCategoryId(existing.category_id ?? NONE);
       setBudgetGroup(existing.budget_group ?? NONE);
+      setBudgetTouched(existing.budget_group != null);
       setInflowTypeId(existing.inflow_type_id ?? NONE);
       setWhose(existing.whose_expense ?? "My");
       setSplitCount(existing.split_count ? String(existing.split_count) : "2");
@@ -167,6 +173,7 @@ export function TransactionDialog({
       setAccountId(lookups.accounts[0]?.id ?? "");
       setCategoryId(NONE);
       setBudgetGroup(NONE);
+      setBudgetTouched(false);
       setInflowTypeId(NONE);
       setWhose("My");
       setSplitCount("2");
@@ -184,15 +191,23 @@ export function TransactionDialog({
   // explicit choice, so you can still classify it however you like.
   function pickCategory(c: CategoryRow) {
     setCategoryId(c.id);
-    if (budgetGroup === NONE && c.budget_group) setBudgetGroup(c.budget_group);
+    // Keep the classification following the category until it's set by hand.
+    if (!budgetTouched && c.budget_group) setBudgetGroup(c.budget_group);
   }
 
   // RobinHood is funded only indirectly (the weekly cron / the linked Investment
   // category), never by a hand-entered expense or income - so keep it out of the
   // account picker. Still show it when editing a transaction that already sits on
-  // it, so those stay editable.
-  const pickableAccounts = lookups.accounts.filter(
-    (a) => a.name.trim().toLowerCase() !== "robinhood" || a.id === existing?.account_id,
+  // it, so those stay editable. Credit cards come first (most spending rides on
+  // them); the saved display order breaks ties within each group.
+  const pickableAccounts = lookups.accounts
+    .filter((a) => a.name.trim().toLowerCase() !== "robinhood" || a.id === existing?.account_id)
+    .sort((a, b) => Number(b.is_credit) - Number(a.is_credit));
+
+  // Categories, most-used first, so the ones you reach for sit at the top. Ties
+  // (and never-used categories) keep their saved display order.
+  const sortedCategories = [...lookups.categories].sort(
+    (a, b) => (lookups.categoryCounts[b.id] ?? 0) - (lookups.categoryCounts[a.id] ?? 0),
   );
 
   // Refunds are handled by the "Refund / money back" toggle, so don't also list
@@ -208,7 +223,7 @@ export function TransactionDialog({
           None
         </Chip>
       ) : null}
-      {lookups.categories.map((c) => {
+      {sortedCategories.map((c) => {
         const on = categoryId === c.id;
         return (
           <Chip
@@ -236,6 +251,11 @@ export function TransactionDialog({
     // your spending at all, so a category is optional there.
     if (mode === "expense" && !isFriend && categoryId === NONE) {
       toast.error("Pick a category for this expense.");
+      return;
+    }
+    // Every expense you own must be classified - no "Unclassified" escape hatch.
+    if (mode === "expense" && !isFriend && budgetGroup === NONE) {
+      toast.error("Classify this expense as Needs, Wants, or Savings.");
       return;
     }
     // A refund nets against a category, so it needs one.
@@ -421,13 +441,19 @@ export function TransactionDialog({
                 <ChipRow>
                   {(
                     [
-                      ["Unclassified", NONE],
                       ["Needs", "needs"],
                       ["Wants", "wants"],
                       ["Savings", "savings"],
                     ] as const
                   ).map(([label, value]) => (
-                    <Chip key={value} selected={budgetGroup === value} onClick={() => setBudgetGroup(value)}>
+                    <Chip
+                      key={value}
+                      selected={budgetGroup === value}
+                      onClick={() => {
+                        setBudgetGroup(value);
+                        setBudgetTouched(true);
+                      }}
+                    >
                       {label}
                     </Chip>
                   ))}

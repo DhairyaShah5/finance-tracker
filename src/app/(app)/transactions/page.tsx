@@ -18,6 +18,14 @@ export default async function TransactionsPage() {
 
   const txns = txnsRes.data ?? [];
   const accounts = accountsRes.data ?? [];
+
+  // How often each category is used, so the Add-transaction picker can lead with
+  // the ones logged most (Eating Out, Groceries, ...).
+  const categoryCounts: Record<string, number> = {};
+  for (const t of txns) {
+    if (t.category_id) categoryCounts[t.category_id] = (categoryCounts[t.category_id] ?? 0) + 1;
+  }
+
   const netWorth = accountActivity(txns, accounts)
     .filter((a) => a.account.include_in_net_worth)
     .reduce((s, a) => s + a.balance, 0);
@@ -33,6 +41,7 @@ export default async function TransactionsPage() {
           categories: categoriesRes.data ?? [],
           inflowTypes: inflowRes.data ?? [],
           debtors: debtorsRes.data ?? [],
+          categoryCounts,
         }}
       />
     </div>
