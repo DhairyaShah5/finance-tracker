@@ -113,6 +113,9 @@ export function TransactionDialog({
   const [amount, setAmount] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [accountId, setAccountId] = React.useState("");
+  // Whether the user hand-picked an account. Until they do, the account follows
+  // the Expense/Income default (a credit card vs. a checking account).
+  const [accountTouched, setAccountTouched] = React.useState(false);
   const [categoryId, setCategoryId] = React.useState(NONE);
   const [budgetGroup, setBudgetGroup] = React.useState(NONE);
   // Whether the user hand-picked Needs/Wants/Savings. Until they do, picking a
@@ -129,6 +132,16 @@ export function TransactionDialog({
   // nets against a category instead of counting as income.
   const [isRefund, setIsRefund] = React.useState(false);
   const [notes, setNotes] = React.useState("");
+
+  // The account to pre-select for a mode: a checking account for income, a
+  // credit card for an expense; fall back to any account.
+  const defaultAccountId = (m: Mode) => {
+    const preferred =
+      m === "income"
+        ? lookups.accounts.find((a) => a.type === "checking")
+        : lookups.accounts.find((a) => a.is_credit);
+    return preferred?.id ?? lookups.accounts[0]?.id ?? "";
+  };
 
   // Only (re)initialize the form when the dialog opens or switches to a
   // different transaction - never on an incidental prop change. RefreshOnFocus
@@ -151,6 +164,7 @@ export function TransactionDialog({
       setAmount(String(existing.amount));
       setDescription(existing.description);
       setAccountId(existing.account_id);
+      setAccountTouched(true);
       setCategoryId(existing.category_id ?? NONE);
       setBudgetGroup(existing.budget_group ?? NONE);
       setBudgetTouched(existing.budget_group != null);
@@ -170,10 +184,9 @@ export function TransactionDialog({
       setDate(today());
       setAmount("");
       setDescription("");
-      // New entries open on the Expense tab, and most spending rides on a credit
-      // card - so default to the first card (fall back to any account).
-      const firstCard = lookups.accounts.find((a) => a.is_credit);
-      setAccountId(firstCard?.id ?? lookups.accounts[0]?.id ?? "");
+      // New entries open on the Expense tab, so default to a credit card.
+      setAccountId(defaultAccountId("expense"));
+      setAccountTouched(false);
       setCategoryId(NONE);
       setBudgetGroup(NONE);
       setBudgetTouched(false);
@@ -198,20 +211,30 @@ export function TransactionDialog({
     if (!budgetTouched && c.budget_group) setBudgetGroup(c.budget_group);
   }
 
+  // Lead with the accounts you'd actually reach for: credit cards first for an
+  // expense, checking accounts first for income. Ties keep their saved display
+  // order.
+  const accountRank = (a: AccountRow) =>
+    mode === "income" ? (a.type === "checking" ? 0 : 1) : a.is_credit ? 0 : 1;
   // RobinHood is funded only indirectly (the weekly cron / the linked Investment
   // category), never by a hand-entered expense or income - so keep it out of the
-  // account picker. Still show it when editing a transaction that already sits on
-  // it, so those stay editable. Credit cards come first (most spending rides on
-  // them); the saved display order breaks ties within each group.
+  // account picker, but still show it when editing a transaction already on it.
   const pickableAccounts = lookups.accounts
     .filter((a) => a.name.trim().toLowerCase() !== "robinhood" || a.id === existing?.account_id)
-    .sort((a, b) => Number(b.is_credit) - Number(a.is_credit));
+    .sort((a, b) => accountRank(a) - accountRank(b));
 
   // Categories, most-used first, so the ones you reach for sit at the top. Ties
   // (and never-used categories) keep their saved display order.
   const sortedCategories = [...lookups.categories].sort(
     (a, b) => (lookups.categoryCounts[b.id] ?? 0) - (lookups.categoryCounts[a.id] ?? 0),
   );
+
+  // Switching Expense/Income moves the default account to match (checking for
+  // income, a card for an expense), unless you've already picked one by hand.
+  function changeMode(m: Mode) {
+    setMode(m);
+    if (!accountTouched) setAccountId(defaultAccountId(m));
+  }
 
   // Refunds are handled by the "Refund / money back" toggle, so don't also list
   // "Refund" as an income type - a refund shouldn't appear in two places.
@@ -329,7 +352,7 @@ export function TransactionDialog({
         </DialogHeader>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto -mr-2 pr-2">
-          <Tabs value={mode} onValueChange={(v) => setMode(v as Mode)}>
+          <Tabs value={mode} onValueChange={(v) => changeMode(v as Mode)}>
             <TabsList className="w-full">
               <TabsTrigger value="expense" className="flex-1">Expense</TabsTrigger>
               <TabsTrigger value="income" className="flex-1">Income</TabsTrigger>
@@ -376,7 +399,14 @@ export function TransactionDialog({
             <Label>Account</Label>
             <ChipRow>
               {pickableAccounts.map((a) => (
-                <Chip key={a.id} selected={accountId === a.id} onClick={() => setAccountId(a.id)}>
+                <Chip
+                  key={a.id}
+                  selected={accountId === a.id}
+                  onClick={() => {
+                    setAccountId(a.id);
+                    setAccountTouched(true);
+                  }}
+                >
                   {a.name}
                 </Chip>
               ))}
