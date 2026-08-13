@@ -125,8 +125,20 @@ export function TransactionDialog({
   const [isRefund, setIsRefund] = React.useState(false);
   const [notes, setNotes] = React.useState("");
 
+  // Only (re)initialize the form when the dialog opens or switches to a
+  // different transaction - never on an incidental prop change. RefreshOnFocus
+  // calls router.refresh() when you tab back to the window, handing us a fresh
+  // `lookups` array; without this guard that reset would wipe whatever you were
+  // typing and snap the mode back to Expense.
+  const initedFor = React.useRef<string | null>(null);
   React.useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      initedFor.current = null;
+      return;
+    }
+    const key = existing?.id ?? "new";
+    if (initedFor.current === key) return;
+    initedFor.current = key;
     if (existing) {
       setMode(existing.is_transfer ? "transfer" : existing.direction === "inflow" ? "income" : "expense");
       setTransferDir(existing.direction);
@@ -174,6 +186,20 @@ export function TransactionDialog({
     setCategoryId(c.id);
     if (budgetGroup === NONE && c.budget_group) setBudgetGroup(c.budget_group);
   }
+
+  // RobinHood is funded only indirectly (the weekly cron / the linked Investment
+  // category), never by a hand-entered expense or income - so keep it out of the
+  // account picker. Still show it when editing a transaction that already sits on
+  // it, so those stay editable.
+  const pickableAccounts = lookups.accounts.filter(
+    (a) => a.name.trim().toLowerCase() !== "robinhood" || a.id === existing?.account_id,
+  );
+
+  // Refunds are handled by the "Refund / money back" toggle, so don't also list
+  // "Refund" as an income type - a refund shouldn't appear in two places.
+  const incomeTypes = lookups.inflowTypes.filter(
+    (i) => i.name.trim().toLowerCase() !== "refund",
+  );
 
   const categoryChips = (opts?: { includeNone?: boolean }) => (
     <ChipRow>
@@ -326,7 +352,7 @@ export function TransactionDialog({
           <div className="space-y-1.5">
             <Label>Account</Label>
             <ChipRow>
-              {lookups.accounts.map((a) => (
+              {pickableAccounts.map((a) => (
                 <Chip key={a.id} selected={accountId === a.id} onClick={() => setAccountId(a.id)}>
                   {a.name}
                 </Chip>
@@ -375,11 +401,12 @@ export function TransactionDialog({
             <div className="space-y-1.5">
               <Label>Income type</Label>
               <ChipRow>
-                <Chip selected={inflowTypeId === NONE} onClick={() => setInflowTypeId(NONE)}>
-                  Unspecified
-                </Chip>
-                {lookups.inflowTypes.map((i) => (
-                  <Chip key={i.id} selected={inflowTypeId === i.id} onClick={() => setInflowTypeId(i.id)}>
+                {incomeTypes.map((i) => (
+                  <Chip
+                    key={i.id}
+                    selected={inflowTypeId === i.id}
+                    onClick={() => setInflowTypeId(inflowTypeId === i.id ? NONE : i.id)}
+                  >
                     {i.name}
                   </Chip>
                 ))}
