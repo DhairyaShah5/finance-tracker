@@ -313,7 +313,7 @@ export function TransactionDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-lg"
+        className="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-2xl"
         style={{ maxHeight: "90dvh" }}
       >
         <DialogHeader className="shrink-0">
