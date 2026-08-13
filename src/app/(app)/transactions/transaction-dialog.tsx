@@ -32,7 +32,8 @@ import type {
   TransactionRow,
 } from "@/lib/database.types";
 import { WHOSE_EXPENSE_VALUES } from "@/lib/defaults";
-import { fmtMoney, todayISO } from "@/lib/format";
+import { fmtMoney, hueColor, todayISO } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { createTransaction, updateTransaction, type TransactionInput } from "./actions";
 
 const NONE = "__none__";
@@ -40,6 +41,48 @@ const NEW_DEBTOR = "__new_debtor__";
 const today = todayISO;
 
 type Mode = "expense" | "income" | "transfer";
+
+/** A translucent version of a category's color, used to fill its selected chip. */
+const hueTint = (hue: number | null | undefined, alpha: number) =>
+  `oklch(0.62 0.13 ${hue ?? 250} / ${alpha})`;
+
+/**
+ * A tap-to-pick pill. The whole set of choices stays on screen (no dropdown to
+ * open and scroll), so the frequent picks are always one tap away.
+ */
+function Chip({
+  selected,
+  onClick,
+  children,
+  style,
+}: {
+  selected: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors",
+        selected
+          ? "border-primary bg-primary/10 font-medium text-foreground"
+          : "border-border bg-secondary/40 text-muted-foreground hover:bg-secondary hover:text-foreground",
+      )}
+      style={style}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** A row of pills that wraps to as many lines as it needs. */
+function ChipRow({ children }: { children: React.ReactNode }) {
+  return <div className="flex flex-wrap gap-2">{children}</div>;
+}
 
 export interface TxnLookups {
   accounts: AccountRow[];
@@ -124,6 +167,41 @@ export function TransactionDialog({
     }
   }, [open, existing, lookups.accounts]);
 
+  // Tapping a category also fills in its Needs/Wants/Savings group when you
+  // haven't set one yet - one less pick for the common case. Never overrides an
+  // explicit choice, so you can still classify it however you like.
+  function pickCategory(c: CategoryRow) {
+    setCategoryId(c.id);
+    if (budgetGroup === NONE && c.budget_group) setBudgetGroup(c.budget_group);
+  }
+
+  const categoryChips = (opts?: { includeNone?: boolean }) => (
+    <ChipRow>
+      {opts?.includeNone ? (
+        <Chip selected={categoryId === NONE} onClick={() => setCategoryId(NONE)}>
+          None
+        </Chip>
+      ) : null}
+      {lookups.categories.map((c) => {
+        const on = categoryId === c.id;
+        return (
+          <Chip
+            key={c.id}
+            selected={on}
+            onClick={() => pickCategory(c)}
+            style={on ? { borderColor: hueColor(c.color_hue), backgroundColor: hueTint(c.color_hue, 0.16) } : undefined}
+          >
+            <span
+              className="h-2.5 w-2.5 shrink-0 rounded-full"
+              style={{ background: hueColor(c.color_hue) }}
+            />
+            {c.name}
+          </Chip>
+        );
+      })}
+    </ChipRow>
+  );
+
   function submit() {
     const direction = mode === "transfer" ? transferDir : mode === "income" ? "inflow" : "outflow";
     const refund = mode === "income" && isRefund;
@@ -189,7 +267,7 @@ export function TransactionDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-md"
+        className="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-lg"
         style={{ maxHeight: "90dvh" }}
       >
         <DialogHeader className="shrink-0">
@@ -225,6 +303,7 @@ export function TransactionDialog({
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="0.00"
+                className="text-lg font-semibold tnum"
               />
             </div>
             <div className="space-y-1.5">
@@ -243,72 +322,37 @@ export function TransactionDialog({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          {/* Account - tap to pick, always visible. */}
+          <div className="space-y-1.5">
+            <Label>Account</Label>
+            <ChipRow>
+              {lookups.accounts.map((a) => (
+                <Chip key={a.id} selected={accountId === a.id} onClick={() => setAccountId(a.id)}>
+                  {a.name}
+                </Chip>
+              ))}
+            </ChipRow>
+          </div>
+
+          {mode === "transfer" ? (
             <div className="space-y-1.5">
-              <Label>Account</Label>
-              <Select value={accountId} onValueChange={setAccountId}>
-                <SelectTrigger><SelectValue placeholder="Account" /></SelectTrigger>
+              <Label>Direction</Label>
+              <Select value={transferDir} onValueChange={(v) => setTransferDir(v as "outflow" | "inflow")}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {lookups.accounts.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-                  ))}
+                  <SelectItem value="outflow">Out of this account</SelectItem>
+                  <SelectItem value="inflow">Into this account</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+          ) : null}
 
-            {mode === "expense" ? (
-              <div className="space-y-1.5">
-                <Label>{whose === "Friend" ? "Category (optional)" : "Category"}</Label>
-                <Select value={categoryId} onValueChange={setCategoryId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={whose === "Friend" ? "None" : "Pick a category"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {whose === "Friend" ? <SelectItem value={NONE}>None</SelectItem> : null}
-                    {lookups.categories.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ) : mode === "income" && isRefund ? (
-              <div className="space-y-1.5">
-                <Label>Refund category</Label>
-                <Select value={categoryId} onValueChange={setCategoryId}>
-                  <SelectTrigger><SelectValue placeholder="Category it came from" /></SelectTrigger>
-                  <SelectContent>
-                    {lookups.categories.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ) : mode === "income" ? (
-              <div className="space-y-1.5">
-                <Label>Income type</Label>
-                <Select value={inflowTypeId} onValueChange={setInflowTypeId}>
-                  <SelectTrigger><SelectValue placeholder="Type" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NONE}>Unspecified</SelectItem>
-                    {lookups.inflowTypes.map((i) => (
-                      <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ) : (
-              <div className="space-y-1.5">
-                <Label>Direction</Label>
-                <Select value={transferDir} onValueChange={(v) => setTransferDir(v as "outflow" | "inflow")}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="outflow">Out of this account</SelectItem>
-                    <SelectItem value="inflow">Into this account</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
+          {mode === "expense" ? (
+            <div className="space-y-1.5">
+              <Label>{whose === "Friend" ? "Category (optional)" : "Category"}</Label>
+              {categoryChips({ includeNone: whose === "Friend" })}
+            </div>
+          ) : null}
 
           {mode === "income" ? (
             <div className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
@@ -322,63 +366,88 @@ export function TransactionDialog({
             </div>
           ) : null}
 
+          {mode === "income" && isRefund ? (
+            <div className="space-y-1.5">
+              <Label>Refund category</Label>
+              {categoryChips()}
+            </div>
+          ) : mode === "income" ? (
+            <div className="space-y-1.5">
+              <Label>Income type</Label>
+              <ChipRow>
+                <Chip selected={inflowTypeId === NONE} onClick={() => setInflowTypeId(NONE)}>
+                  Unspecified
+                </Chip>
+                {lookups.inflowTypes.map((i) => (
+                  <Chip key={i.id} selected={inflowTypeId === i.id} onClick={() => setInflowTypeId(i.id)}>
+                    {i.name}
+                  </Chip>
+                ))}
+              </ChipRow>
+            </div>
+          ) : null}
+
           {mode === "expense" ? (
             <>
               <div className="space-y-1.5">
                 <Label>Needs / Wants / Savings</Label>
-                <Select value={budgetGroup} onValueChange={setBudgetGroup}>
-                  <SelectTrigger><SelectValue placeholder="Unclassified" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NONE}>Unclassified</SelectItem>
-                    <SelectItem value="needs">Needs</SelectItem>
-                    <SelectItem value="wants">Wants</SelectItem>
-                    <SelectItem value="savings">Savings</SelectItem>
-                  </SelectContent>
-                </Select>
+                <ChipRow>
+                  {(
+                    [
+                      ["Unclassified", NONE],
+                      ["Needs", "needs"],
+                      ["Wants", "wants"],
+                      ["Savings", "savings"],
+                    ] as const
+                  ).map(([label, value]) => (
+                    <Chip key={value} selected={budgetGroup === value} onClick={() => setBudgetGroup(value)}>
+                      {label}
+                    </Chip>
+                  ))}
+                </ChipRow>
                 <p className="text-xs text-muted-foreground">
                   You decide per transaction. Savings (investments, vault) is set aside, not spent.
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Whose expense</Label>
+                <ChipRow>
+                  {WHOSE_EXPENSE_VALUES.map((w) => (
+                    <Chip
+                      key={w}
+                      selected={whose === w}
+                      onClick={() => {
+                        setWhose(w);
+                        if (w === "My") setDebtorId(NONE);
+                        else if (w !== "Friend" && debtorId === NEW_DEBTOR) setDebtorId(NONE);
+                      }}
+                    >
+                      {w}
+                    </Chip>
+                  ))}
+                </ChipRow>
+              </div>
+
+              {whose !== "My" ? (
                 <div className="space-y-1.5">
-                  <Label>Whose expense</Label>
-                  <Select
-                    value={whose}
-                    onValueChange={(v) => {
-                      setWhose(v);
-                      if (v === "My") setDebtorId(NONE);
-                      else if (v !== "Friend" && debtorId === NEW_DEBTOR) setDebtorId(NONE);
-                    }}
-                  >
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                  <Label>{whose === "Friend" ? "Who owes you?" : "Debtor"}</Label>
+                  <Select value={debtorId} onValueChange={setDebtorId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder={whose === "Friend" ? "Pick or add" : "Optional"} />
+                    </SelectTrigger>
                     <SelectContent>
-                      {WHOSE_EXPENSE_VALUES.map((w) => (
-                        <SelectItem key={w} value={w}>{w}</SelectItem>
+                      {whose !== "Friend" ? <SelectItem value={NONE}>Unassigned</SelectItem> : null}
+                      {lookups.debtors.map((d) => (
+                        <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
                       ))}
+                      {whose === "Friend" ? (
+                        <SelectItem value={NEW_DEBTOR}>+ New person…</SelectItem>
+                      ) : null}
                     </SelectContent>
                   </Select>
                 </div>
-                {whose !== "My" ? (
-                  <div className="space-y-1.5">
-                    <Label>{whose === "Friend" ? "Who owes you?" : "Debtor"}</Label>
-                    <Select value={debtorId} onValueChange={setDebtorId}>
-                      <SelectTrigger>
-                        <SelectValue placeholder={whose === "Friend" ? "Pick or add" : "Optional"} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {whose !== "Friend" ? <SelectItem value={NONE}>Unassigned</SelectItem> : null}
-                        {lookups.debtors.map((d) => (
-                          <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                        ))}
-                        {whose === "Friend" ? (
-                          <SelectItem value={NEW_DEBTOR}>+ New person…</SelectItem>
-                        ) : null}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                ) : null}
-              </div>
+              ) : null}
 
               {whose === "Friend" && debtorId === NEW_DEBTOR ? (
                 <div className="space-y-1.5">
