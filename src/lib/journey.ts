@@ -287,11 +287,16 @@ export function buildJourney(
   // still held (e.g. a CD) is both an asset in net worth and a debt here, so it
   // cancels in true net worth; only support you have already spent (tuition, rent)
   // drags true net worth below zero.
+  //
+  // Transfers you tick OFF net worth on the India page (exclude_from_net_worth)
+  // are not debt here either - otherwise this page's owed-to-home and true net
+  // worth would disagree with the India page, which counts only the ticked ones.
+  const debtTransfers = india.filter((t) => !t.exclude_from_net_worth);
   const signedDebt = (t: IndiaTransferRow) => (t.direction === "received" ? t.usd_amount : -t.usd_amount);
   const netDebtAsOf = (iso: string) =>
-    round2(india.reduce((d, t) => (t.transfer_date <= iso ? d + signedDebt(t) : d), 0));
+    round2(debtTransfers.reduce((d, t) => (t.transfer_date <= iso ? d + signedDebt(t) : d), 0));
   const netDebtThroughMonth = (month: string) =>
-    round2(india.reduce((d, t) => (t.transfer_date.slice(0, 7) <= month ? d + signedDebt(t) : d), 0));
+    round2(debtTransfers.reduce((d, t) => (t.transfer_date.slice(0, 7) <= month ? d + signedDebt(t) : d), 0));
 
   // Year-start dates: arrival, then each anniversary that has already happened.
   const starts: string[] = [];
