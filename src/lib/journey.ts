@@ -242,7 +242,6 @@ export interface Journey {
   dayInCurrentYear: number;
   currentNetWorth: number; // US total across every account
   arrivalCapital: number; // what you landed with
-  builtSinceArrival: number; // currentNetWorth minus arrivalCapital
   netDebt: number; // family support outstanding (received minus sent), mostly tuition
   trueNetWorth: number; // currentNetWorth minus netDebt (what you own minus what you owe home)
   debtFree: boolean; // true net worth is at or above zero (assets cover the family debt)
@@ -254,8 +253,6 @@ export interface Journey {
   trajectory: NetWorthPoint[]; // oldest to newest
   milestones: Milestone[]; // oldest to newest
 }
-
-const NW_THRESHOLDS = [1000, 5000, 10000, 25000, 50000, 100000, 250000];
 
 /**
  * Assemble the whole journey. `netWorth` is the TOTAL net worth (sum of every
@@ -532,43 +529,9 @@ export function buildJourney(
     if (firstTrip) push(firstTrip.txn_date, "trip", "Your first trip", firstTrip.description || "Time to explore", myAmount(firstTrip));
   }
 
-  // "Built" milestones: net worth grown BEYOND the funds you arrived with, so
-  // money from home never creates a hollow "crossed $Xk" milestone on day one.
-  // Measured on (net worth minus arrival capital), which starts at zero on
-  // arrival and only climbs once you build past your starting stake.
-  //
-  // Dated at TRANSACTION granularity (a running total walked in date order), not
-  // the monthly close, so several thresholds crossed in one busy month get their
-  // real, distinct dates. If a single transaction leaps past more than one
-  // threshold at once, they collapse into one milestone rather than stacking on
-  // the same day.
-  const beyond = arrivalCapital > 0;
-  const chron = [...txns].sort((a, b) =>
-    a.txn_date < b.txn_date ? -1 : a.txn_date > b.txn_date ? 1 : a.created_at.localeCompare(b.created_at),
-  );
-  let builtRunning = round2(netWorth - totalDelta); // net worth before the first transaction
-  let bi = 0;
-  while (bi < NW_THRESHOLDS.length && builtRunning - arrivalCapital >= NW_THRESHOLDS[bi]) bi++;
-  for (const t of chron) {
-    builtRunning = round2(builtRunning + wealthDelta(t, linkedCatIds));
-    const built = builtRunning - arrivalCapital;
-    const crossed: number[] = [];
-    while (bi < NW_THRESHOLDS.length && built >= NW_THRESHOLDS[bi]) {
-      crossed.push(NW_THRESHOLDS[bi]);
-      bi++;
-    }
-    if (!crossed.length) continue;
-    const top = crossed[crossed.length - 1];
-    const passed = crossed.slice(0, -1);
-    push(
-      t.txn_date,
-      "networth",
-      beyond ? `Built ${fmtK(top)} beyond your arrival funds` : `Crossed ${fmtK(top)} net worth`,
-      passed.length
-        ? `Net worth reached ${fmtMoney(builtRunning)}, passing ${passed.map(fmtK).join(" and ")} the same day`
-        : `Net worth reached ${fmtMoney(builtRunning)}`,
-    );
-  }
+  // (Removed the "Built $Xk beyond your arrival funds" milestones: the arrival
+  // funds were money from home, not an own-money starting stake, so "beyond
+  // arrival" was a confusing, meaningless baseline for this ledger.)
 
   // Anniversaries already reached.
   for (let k = 1; k < starts.length; k++) {
@@ -602,7 +565,6 @@ export function buildJourney(
     dayInCurrentYear: differenceInCalendarDays(parseISO(today), parseISO(starts[starts.length - 1])) + 1,
     currentNetWorth: round2(netWorth),
     arrivalCapital,
-    builtSinceArrival: round2(netWorth - arrivalCapital),
     netDebt,
     trueNetWorth,
     debtFree,
@@ -619,9 +581,4 @@ export function buildJourney(
 function rank(kind: MilestoneKind): number {
   const order: MilestoneKind[] = ["arrival", "income", "job", "invest", "trip", "networth", "debtfree", "anniversary", "peak"];
   return order.indexOf(kind);
-}
-
-/** Compact "$5k" / "$250k" label for round thresholds. */
-function fmtK(n: number): string {
-  return n >= 1000 ? `$${n / 1000}k` : `$${n}`;
 }

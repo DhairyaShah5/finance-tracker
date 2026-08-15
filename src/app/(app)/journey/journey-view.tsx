@@ -623,11 +623,8 @@ export function JourneyView({ journey }: { journey: Journey }) {
                 <CountUp value={journey.currentNetWorth} cents />
               </div>
               <p className="mt-2 text-sm text-muted-foreground">
-                Total net worth, savings and investments included. Built{" "}
-                <span className={journey.builtSinceArrival >= 0 ? "font-semibold text-positive" : "font-semibold text-negative"}>
-                  {fmtMoney(journey.builtSinceArrival, { sign: true })}
-                </span>{" "}
-                since you landed on {fmtDate(journey.anchor, "long")}
+                Total net worth, savings and investments included, since you landed on{" "}
+                {fmtDate(journey.anchor, "long")}
                 {freshChapter ? ". A new chapter starts today." : "."}
               </p>
               {/* Progress through the current year */}
@@ -692,17 +689,14 @@ export function JourneyView({ journey }: { journey: Journey }) {
       </Reveal>
 
       {/* Journey stat strip */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Reveal delay={60} className="h-full">
           <StatCard label="Days in the US" value={<span className="tnum">{journey.daysInUS.toLocaleString()}</span>} hint={`Since ${fmtDate(journey.anchor, "medium")}`} icon={<CalendarDays />} />
         </Reveal>
         <Reveal delay={120} className="h-full">
-          <StatCard label="Net worth built" value={<CountUp value={journey.builtSinceArrival} />} hint="Beyond your arrival funds" accent={journey.builtSinceArrival >= 0 ? "positive" : "negative"} icon={<TrendingUp />} iconClassName="bg-positive" />
-        </Reveal>
-        <Reveal delay={180} className="h-full">
           <StatCard label="Total earned" value={<CountUp value={totalEarned} />} hint="Across your whole journey" accent="positive" icon={<Coins />} />
         </Reveal>
-        <Reveal delay={240} className="h-full">
+        <Reveal delay={180} className="h-full">
           <StatCard label="Total saved" value={<CountUp value={totalSaved} />} hint="Investments and vault" accent="positive" icon={<PiggyBank />} iconClassName="bg-positive" />
         </Reveal>
       </div>
