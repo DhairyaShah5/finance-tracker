@@ -297,6 +297,11 @@ export function buildJourney(
     round2(debtTransfers.reduce((d, t) => (t.transfer_date <= iso ? d + signedDebt(t) : d), 0));
   const netDebtThroughMonth = (month: string) =>
     round2(debtTransfers.reduce((d, t) => (t.transfer_date.slice(0, 7) <= month ? d + signedDebt(t) : d), 0));
+  // The amount owed home RIGHT NOW = every logged transfer, matching the India
+  // Transfers page. Deliberately not date-gated to `today`: a transfer dated a
+  // few days out (e.g. the upcoming semester's fees) is still money you owe now,
+  // and the India page counts it, so gating it here made the two pages disagree.
+  const totalNetDebt = round2(debtTransfers.reduce((d, t) => d + signedDebt(t), 0));
 
   // Year-start dates: arrival, then each anniversary that has already happened.
   const starts: string[] = [];
@@ -328,7 +333,9 @@ export function buildJourney(
     prevEndNetWorth = endNetWorth;
 
     const trueStartNetWorth = round2(startNetWorth - netDebtAsOf(format(addDays(parseISO(startISO), -1), "yyyy-MM-dd")));
-    const trueEndNetWorth = round2(endNetWorth - netDebtAsOf(endISO));
+    // The current year ends "now", so its true end reflects the full amount owed
+    // (including any transfer dated slightly ahead) to match the headline / India page.
+    const trueEndNetWorth = round2(endNetWorth - (isCurrent ? totalNetDebt : netDebtAsOf(endISO)));
 
     const s = windowStats(txns, startISO, nextStartISO);
     // Money kept from income = what you earned minus what you consumed. Savings
@@ -412,7 +419,7 @@ export function buildJourney(
   );
 
   // True, all-in net worth: what you own minus the family support you still owe.
-  const netDebt = netDebtAsOf(today);
+  const netDebt = totalNetDebt;
   const trueNetWorth = round2(netWorth - netDebt);
   const debtFree = trueNetWorth >= 0;
   const gapToDebtFree = round2(Math.max(0, -trueNetWorth));
