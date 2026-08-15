@@ -131,9 +131,12 @@ function JourneyChart({
   points: NetWorthPoint[];
   boundaries: { month: string; year: number }[];
 }) {
-  const monthToLabel = new Map(points.map((p) => [p.month, p.label]));
+  // Index-based x so a year-boundary line can sit BETWEEN two months (at the left
+  // edge of the year-start month) instead of snapping onto that month's point.
   // Debt sits BELOW zero (you owe it); net worth above. Keep 0 in view as the divider.
-  const data = points.map((p) => ({ ...p, debtNeg: -p.debt }));
+  const data = points.map((p, i) => ({ ...p, debtNeg: -p.debt, idx: i }));
+  const labelOf = (i: number) => points[i]?.label ?? "";
+  const monthToIdx = new Map(points.map((p, i) => [p.month, i] as const));
   const vals = data.flatMap((p) => [p.netWorth, p.debtNeg]);
   const rawLo = Math.min(0, ...vals);
   const rawHi = Math.max(0, ...vals);
@@ -153,21 +156,37 @@ function JourneyChart({
           </linearGradient>
         </defs>
         <CartesianGrid strokeDasharray="4 4" stroke="var(--border)" vertical={false} />
-        <XAxis dataKey="month" tickFormatter={(m: string) => monthToLabel.get(m) ?? m} minTickGap={14} {...AXIS} dy={4} />
+        <XAxis
+          type="number"
+          dataKey="idx"
+          domain={[0, data.length - 1]}
+          ticks={data.map((_, i) => i)}
+          tickFormatter={(i: number) => labelOf(i)}
+          minTickGap={14}
+          {...AXIS}
+          dy={4}
+        />
         <YAxis {...AXIS} width={56} tickFormatter={moneyTick} tickCount={9} domain={domain} />
         <Tooltip cursor={{ stroke: "var(--border)", strokeWidth: 1 }} content={<JourneyTip />} />
         {/* Zero divider: own above, owe below. */}
         <ReferenceLine y={0} stroke="var(--muted-foreground)" strokeOpacity={0.5} strokeDasharray="2 3" />
-        {boundaries.map((b) => (
-          <ReferenceLine
-            key={b.month}
-            x={b.month}
-            stroke="var(--primary)"
-            strokeDasharray="4 4"
-            strokeOpacity={0.6}
-            label={{ value: `Yr ${b.year}`, position: "insideTopRight", fill: "var(--primary)", fontSize: 10, fontWeight: 600 }}
-          />
-        ))}
+        {boundaries.map((b) => {
+          const bi = monthToIdx.get(b.month);
+          if (bi == null) return null;
+          // Sit at the LEFT edge of the year-start month, so that month's data
+          // (e.g. a transfer received right after the year began) reads to the
+          // RIGHT of the line, not on top of it.
+          return (
+            <ReferenceLine
+              key={b.month}
+              x={Math.max(0, bi - 0.5)}
+              stroke="var(--primary)"
+              strokeDasharray="4 4"
+              strokeOpacity={0.6}
+              label={{ value: `Yr ${b.year}`, position: "insideTopRight", fill: "var(--primary)", fontSize: 10, fontWeight: 600 }}
+            />
+          );
+        })}
         {/* Debt owed home, drawn below zero. Debt free is when net position reaches 0. */}
         <Area
           type="monotone"
