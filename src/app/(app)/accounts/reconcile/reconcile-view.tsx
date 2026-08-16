@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { AlertTriangle, ArrowLeft, CheckCircle2, Loader2 } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, Loader2, Flag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,10 +16,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { fmtMoney, todayISO } from "@/lib/format";
-import { reconcileAccount, type ReconcileResult } from "../actions";
+import { fmtMoney, fmtDate, todayISO } from "@/lib/format";
+import { reconcileAccount, attestReconciliation, type ReconcileResult } from "../actions";
 
-type Acct = { id: string; name: string; isCredit: boolean; balance: number };
+type Acct = { id: string; name: string; isCredit: boolean; balance: number; reconciledThrough: string | null };
 
 export function ReconcileView({ accounts }: { accounts: Acct[] }) {
   const [accountId, setAccountId] = React.useState(accounts[0]?.id ?? "");
@@ -30,6 +30,7 @@ export function ReconcileView({ accounts }: { accounts: Acct[] }) {
   const router = useRouter();
 
   const acct = accounts.find((a) => a.id === accountId);
+  const canSubmit = Boolean(accountId) && balance.trim() !== "";
 
   function check() {
     if (!accountId) return void toast.error("Pick an account.");
@@ -48,6 +49,19 @@ export function ReconcileView({ accounts }: { accounts: Acct[] }) {
     });
   }
 
+  // Trust the statement over the momentarily-behind ledger: stamp the checkpoint
+  // so the next cycle measures forward from this verified balance.
+  function attest() {
+    if (!canSubmit) return;
+    start(async () => {
+      const res = await attestReconciliation({ account_id: accountId, as_of_date: date, statement_balance: balance });
+      if (!res.ok) return void toast.error(res.error ?? "Could not mark reconciled.");
+      setResult(res);
+      toast.success(`Marked reconciled through ${res.recordedThrough} from the statement.`);
+      router.refresh();
+    });
+  }
+
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div className="space-y-1">
@@ -56,9 +70,9 @@ export function ReconcileView({ accounts }: { accounts: Acct[] }) {
         </Link>
         <h1 className="text-2xl font-semibold tracking-tight">Reconcile to a statement</h1>
         <p className="text-sm text-muted-foreground">
-          Each time a statement arrives, check its closing balance against your ledger. A mismatch means a
-          transaction that period (usually a card payment) never got logged, so you catch it in that month
-          instead of a year later.
+          Each time a statement arrives, check its closing balance against your ledger. Once an account has a
+          reconciled point, each new statement is checked over just that one closed cycle, so an unfinished
+          current month can&apos;t throw off a statement that already closed.
         </p>
       </div>
 
@@ -80,6 +94,9 @@ export function ReconcileView({ accounts }: { accounts: Acct[] }) {
             {acct ? (
               <p className="text-xs text-muted-foreground">
                 In the app right now: {fmtMoney(acct.balance, { cents: true })}.{" "}
+                {acct.reconciledThrough
+                  ? `Last reconciled through ${fmtDate(acct.reconciledThrough, "short")}.`
+                  : "Not reconciled yet, this first check measures back from today."}{" "}
                 {acct.isCredit ? "Credit cards are negative when you owe, so enter the statement the same way (owe $149.95 → -149.95)." : null}
               </p>
             ) : null}
@@ -104,7 +121,7 @@ export function ReconcileView({ accounts }: { accounts: Acct[] }) {
             </div>
           </div>
 
-          <Button onClick={check} disabled={pending || !accountId || balance.trim() === ""}>
+          <Button onClick={check} disabled={pending || !canSubmit}>
             {pending ? <Loader2 className="size-4 animate-spin" /> : null} Check
           </Button>
         </CardContent>
@@ -113,7 +130,27 @@ export function ReconcileView({ accounts }: { accounts: Acct[] }) {
       {result?.ok ? (
         <Card>
           <CardContent className="space-y-4 pt-6">
-            {result.reconciled ? (
+            {result.basis === "checkpoint" && result.measuredFrom ? (
+              <p className="text-xs text-muted-foreground">
+                Measured forward from your last reconciled point
+                {" "}({fmtDate(result.measuredFrom, "short")}, {fmtMoney(result.measuredFromBalance ?? 0, { cents: true })})
+                {" "}over this cycle only, today&apos;s balance and the open month aren&apos;t in the math.
+              </p>
+            ) : null}
+
+            {result.attested ? (
+              <div className="flex items-start gap-3">
+                <Flag className="mt-0.5 size-5 text-emerald-600 dark:text-emerald-500" />
+                <div>
+                  <p className="font-medium text-emerald-600 dark:text-emerald-500">Marked reconciled from the statement</p>
+                  <p className="text-sm text-muted-foreground">
+                    Recorded {fmtMoney(result.statementBalance ?? 0, { cents: true })} as verified on {result.asOf}. This account
+                    is now stamped <span className="font-medium text-foreground">reconciled through {result.recordedThrough}</span>,
+                    and your next statement will be checked forward from here.
+                  </p>
+                </div>
+              </div>
+            ) : result.reconciled ? (
               <div className="flex items-start gap-3">
                 <CheckCircle2 className="mt-0.5 size-5 text-emerald-600 dark:text-emerald-500" />
                 <div>
@@ -125,18 +162,33 @@ export function ReconcileView({ accounts }: { accounts: Acct[] }) {
                 </div>
               </div>
             ) : (
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="mt-0.5 size-5 text-amber-600 dark:text-amber-500" />
-                <div>
-                  <p className="font-medium text-amber-600 dark:text-amber-500">
-                    Off by {fmtMoney(Math.abs(result.difference ?? 0), { cents: true })}
+              <div className="space-y-3">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="mt-0.5 size-5 text-amber-600 dark:text-amber-500" />
+                  <div>
+                    <p className="font-medium text-amber-600 dark:text-amber-500">
+                      Off by {fmtMoney(Math.abs(result.difference ?? 0), { cents: true })}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Ledger says {fmtMoney(result.ledgerBalance ?? 0, { cents: true })} on {result.asOf}; the statement
+                      says {fmtMoney(result.statementBalance ?? 0, { cents: true })}.{" "}
+                      {result.basis === "checkpoint"
+                        ? "A transaction inside this cycle is missing or wrong, compare the list below against the statement."
+                        : "A transaction in this period is missing or wrong, most often a card payment that was never logged. Compare the list below, then add it via Transfer / Pay off (or Import)."}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-md border border-dashed p-3">
+                  <p className="text-sm">
+                    Sure the statement&apos;s {fmtMoney(result.statementBalance ?? 0, { cents: true })} is right and the
+                    gap is just recent activity you haven&apos;t entered yet? Trust the statement, it&apos;s the source of
+                    truth, and record it as your reconciled point.
                   </p>
-                  <p className="text-sm text-muted-foreground">
-                    Ledger says {fmtMoney(result.ledgerBalance ?? 0, { cents: true })} on {result.asOf}; the statement
-                    says {fmtMoney(result.statementBalance ?? 0, { cents: true })}. A transaction in this period is
-                    missing or wrong, most often a card payment that was never logged. Compare the list below against
-                    your statement to find it, then add it via Transfer / Pay off (or Import).
-                  </p>
+                  <Button variant="outline" size="sm" className="mt-2" onClick={attest} disabled={pending}>
+                    {pending ? <Loader2 className="size-4 animate-spin" /> : <Flag className="size-4" />}
+                    Mark reconciled anyway
+                  </Button>
                 </div>
               </div>
             )}

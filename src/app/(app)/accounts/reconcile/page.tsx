@@ -17,6 +17,7 @@ export default async function ReconcilePage() {
     name: a.account.name,
     isCredit: a.account.is_credit,
     balance: a.balance,
+    reconciledThrough: a.account.reconciled_through,
   }));
   return <ReconcileView accounts={accounts} />;
 }

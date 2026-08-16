@@ -408,13 +408,19 @@ export async function commitTransferImport(rowsInput: ImportRow[]): Promise<Acti
 }
 
 // ---------------------------------------------------------------------------
-// Statement reconciliation - the going-forward safeguard. Given an account, a
-// statement closing date, and the statement's closing balance, compute what the
-// ledger says the balance was on that date (today's balance minus everything
-// logged after it) and report the difference. Zero = reconciled; anything else
-// means a transaction in that period is missing or wrong (most often an
-// unlogged credit-card payment). Enter balances the way the app shows the
-// account: credit cards are negative when you owe.
+// Statement reconciliation - the going-forward safeguard, with CHECKPOINTS.
+//
+// Every account carries a checkpoint: (reconciled_through, reconciled_balance)
+// = the last statement whose closing balance you verified. Reconciling a newer
+// statement measures FORWARD from that checkpoint over just the one closed cycle
+// (checkpoint date -> new statement date), so an open/incomplete current month
+// can no longer throw off an older statement. Only when there is no earlier
+// checkpoint do we fall back to walking back from today's balance.
+//
+// A match auto-stamps the checkpoint forward. When the ledger is momentarily
+// behind (the check is off) you can still attest a statement straight from the
+// paper via attestReconciliation - the statement is ground truth - which stamps
+// the checkpoint so the next cycle measures cleanly from there.
 // ---------------------------------------------------------------------------
 const reconcileSchema = z.object({
   account_id: z.string().uuid("Pick an account."),
@@ -433,8 +439,56 @@ export interface ReconcileResult {
   statementBalance?: number;
   difference?: number;
   reconciled?: boolean;
+  attested?: boolean; // stamped from the statement despite a ledger mismatch
   recordedThrough?: string | null;
+  // How the ledger balance was derived, so the UI can explain the check.
+  basis?: "checkpoint" | "current";
+  measuredFrom?: string | null; // checkpoint date, forward mode
+  measuredFromBalance?: number | null; // checkpoint balance, forward mode
   periodTxns?: { date: string; description: string; signed: number }[];
+}
+
+type TxnRow = Database["public"]["Tables"]["transactions"]["Row"];
+
+// Signed movement on the account within a date window, matching accountActivity:
+// its own transactions plus category-linked credits (Tuition Vault/Investment
+// deposits). `afterExclusive`/`uptoInclusive` are ISO dates; null = open end.
+function windowActivity(
+  txns: TxnRow[],
+  acctId: string,
+  linkedCatIds: Set<string>,
+  afterExclusive: string | null,
+  uptoInclusive: string | null,
+): number {
+  let sum = 0;
+  for (const t of txns) {
+    if (afterExclusive != null && t.txn_date <= afterExclusive) continue;
+    if (uptoInclusive != null && t.txn_date > uptoInclusive) continue;
+    if (t.account_id === acctId) sum += t.direction === "inflow" ? t.amount : -t.amount;
+    else if (t.direction === "outflow" && !t.is_transfer && t.category_id && linkedCatIds.has(t.category_id)) sum += t.amount;
+  }
+  return sum;
+}
+
+// Move the checkpoint forward: record this statement's date + balance as the new
+// trusted point. Returns the new reconciled_through, or `fallback` on failure.
+async function stampCheckpoint(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+  accountId: string,
+  asOf: string,
+  balance: number,
+  fallback: string | null,
+): Promise<string | null> {
+  const { error } = await supabase
+    .from("accounts")
+    .update({ reconciled_through: asOf, reconciled_balance: balance })
+    .eq("id", accountId)
+    .eq("user_id", userId);
+  if (error) return fallback;
+  revalidatePath("/accounts");
+  revalidatePath("/accounts/reconcile");
+  return asOf;
 }
 
 export async function reconcileAccount(input: ReconcileInput): Promise<ReconcileResult> {
@@ -453,44 +507,47 @@ export async function reconcileAccount(input: ReconcileInput): Promise<Reconcile
   if (!acct) return { ok: false, error: "Account not found." };
   const txns = txnsRes.data ?? [];
   const cats = catsRes.data ?? [];
-
-  const current = accountActivity(txns, [acct], cats).find((a) => a.account.id === acct.id)?.balance ?? 0;
-
-  // Everything logged AFTER the statement date, on this account: its own signed
-  // movements plus category-linked credits (Tuition Vault/Investment deposits).
   const linkedCatIds = new Set(cats.filter((c) => c.linked_account_id === acct.id).map((c) => c.id));
-  let after = 0;
-  for (const t of txns) {
-    if (t.txn_date <= d.as_of_date) continue;
-    if (t.account_id === acct.id) after += t.direction === "inflow" ? t.amount : -t.amount;
-    else if (t.direction === "outflow" && !t.is_transfer && t.category_id && linkedCatIds.has(t.category_id)) after += t.amount;
+
+  // Forward mode when there's an earlier checkpoint: measure just the one cycle
+  // from it to the statement date, so the open current month is never in path.
+  const hasCheckpoint =
+    acct.reconciled_through != null &&
+    acct.reconciled_balance != null &&
+    acct.reconciled_through < d.as_of_date;
+
+  let ledgerBalance: number;
+  let basis: "checkpoint" | "current";
+  let windowStart: string | null; // exclusive lower bound of the eyeball list
+  if (hasCheckpoint) {
+    const cycle = windowActivity(txns, acct.id, linkedCatIds, acct.reconciled_through, d.as_of_date);
+    ledgerBalance = round2((acct.reconciled_balance ?? 0) + cycle);
+    basis = "checkpoint";
+    windowStart = acct.reconciled_through;
+  } else {
+    const current = accountActivity(txns, [acct], cats).find((a) => a.account.id === acct.id)?.balance ?? 0;
+    const after = windowActivity(txns, acct.id, linkedCatIds, d.as_of_date, null);
+    ledgerBalance = round2(current - after);
+    basis = "current";
+    // ~40 days before the statement date, so there's a period to eyeball.
+    const start = new Date(`${d.as_of_date.slice(0, 10)}T12:00:00Z`);
+    start.setUTCDate(start.getUTCDate() - 40);
+    windowStart = start.toISOString().slice(0, 10);
   }
-  const ledgerBalance = round2(current - after);
+
   const difference = round2(ledgerBalance - round2(d.statement_balance));
   const reconciled = Math.abs(difference) < 0.005;
 
-  // Stamp the account when it reconciles, only ever moving the date forward.
+  // A clean match auto-stamps the checkpoint forward.
   let recordedThrough = acct.reconciled_through;
   if (reconciled && (!acct.reconciled_through || d.as_of_date > acct.reconciled_through)) {
-    const { error: stampErr } = await supabase
-      .from("accounts")
-      .update({ reconciled_through: d.as_of_date })
-      .eq("id", acct.id)
-      .eq("user_id", user.id);
-    if (!stampErr) {
-      recordedThrough = d.as_of_date;
-      revalidatePath("/accounts");
-      revalidatePath("/accounts/reconcile");
-    }
+    recordedThrough = await stampCheckpoint(supabase, user.id, acct.id, d.as_of_date, round2(d.statement_balance), recordedThrough);
   }
 
-  // The account's own transactions in the ~40 days up to the statement date -
-  // i.e. what should appear on this statement, to eyeball against it.
-  const start = new Date(`${d.as_of_date.slice(0, 10)}T12:00:00Z`);
-  start.setUTCDate(start.getUTCDate() - 40);
-  const startISO = start.toISOString().slice(0, 10);
+  // The transactions inside the measured window, to compare line-by-line against
+  // the statement: (checkpoint, statement] in forward mode, else the ~40d run-up.
   const periodTxns = txns
-    .filter((t) => t.account_id === acct.id && t.txn_date <= d.as_of_date && t.txn_date >= startISO)
+    .filter((t) => t.account_id === acct.id && t.txn_date <= d.as_of_date && (windowStart == null || t.txn_date > windowStart))
     .sort((a, b) => (a.txn_date < b.txn_date ? -1 : a.txn_date > b.txn_date ? 1 : 0))
     .map((t) => ({ date: t.txn_date, description: t.description, signed: round2(t.direction === "inflow" ? t.amount : -t.amount) }));
 
@@ -504,7 +561,40 @@ export async function reconcileAccount(input: ReconcileInput): Promise<Reconcile
     difference,
     reconciled,
     recordedThrough,
+    basis,
+    measuredFrom: hasCheckpoint ? acct.reconciled_through : null,
+    measuredFromBalance: hasCheckpoint ? round2(acct.reconciled_balance ?? 0) : null,
     periodTxns,
+  };
+}
+
+// Attest a statement balance straight from the paper, even when the live ledger
+// is momentarily behind. The statement is ground truth; this stamps the
+// checkpoint forward so the next cycle measures cleanly from here. Refuses to
+// move the checkpoint backward past an already-reconciled later date.
+export async function attestReconciliation(input: ReconcileInput): Promise<ReconcileResult> {
+  const parsed = reconcileSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
+  const { supabase, user } = await authed();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const d = parsed.data;
+
+  const { data: acct } = await supabase
+    .from("accounts").select("*").eq("id", d.account_id).eq("user_id", user.id).maybeSingle();
+  if (!acct) return { ok: false, error: "Account not found." };
+  if (acct.reconciled_through && d.as_of_date < acct.reconciled_through) {
+    return { ok: false, error: `Already reconciled through ${acct.reconciled_through}, which is later than ${d.as_of_date}.` };
+  }
+  const recordedThrough = await stampCheckpoint(supabase, user.id, acct.id, d.as_of_date, round2(d.statement_balance), acct.reconciled_through);
+  return {
+    ok: true,
+    account: acct.name,
+    isCredit: acct.is_credit,
+    asOf: d.as_of_date,
+    statementBalance: round2(d.statement_balance),
+    reconciled: true,
+    attested: true,
+    recordedThrough,
   };
 }
 
