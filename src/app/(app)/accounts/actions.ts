@@ -470,9 +470,36 @@ function windowActivity(
   return sum;
 }
 
-// Move the checkpoint forward: record this statement's date + balance as the new
-// trusted point. Returns the new reconciled_through, or `fallback` on failure.
-async function stampCheckpoint(
+// Log the reconciliation to history: one durable row per statement. Upsert on
+// (account, as_of_date) so re-reconciling a statement updates its record rather
+// than duplicating it.
+async function recordReconciliation(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+  accountId: string,
+  asOf: string,
+  statementBalance: number,
+  method: "matched" | "attested",
+  ledgerBalance: number | null,
+  difference: number | null,
+): Promise<void> {
+  await supabase.from("account_reconciliations").upsert(
+    {
+      user_id: userId,
+      account_id: accountId,
+      as_of_date: asOf,
+      statement_balance: statementBalance,
+      ledger_balance: ledgerBalance,
+      difference,
+      method,
+    },
+    { onConflict: "user_id,account_id,as_of_date" },
+  );
+}
+
+// Move the account's checkpoint forward to this statement's date + balance.
+// Returns the new reconciled_through, or `fallback` on failure.
+async function moveCheckpoint(
   supabase: SupabaseClient<Database>,
   userId: string,
   accountId: string,
@@ -485,10 +512,7 @@ async function stampCheckpoint(
     .update({ reconciled_through: asOf, reconciled_balance: balance })
     .eq("id", accountId)
     .eq("user_id", userId);
-  if (error) return fallback;
-  revalidatePath("/accounts");
-  revalidatePath("/accounts/reconcile");
-  return asOf;
+  return error ? fallback : asOf;
 }
 
 export async function reconcileAccount(input: ReconcileInput): Promise<ReconcileResult> {
@@ -538,10 +562,15 @@ export async function reconcileAccount(input: ReconcileInput): Promise<Reconcile
   const difference = round2(ledgerBalance - round2(d.statement_balance));
   const reconciled = Math.abs(difference) < 0.005;
 
-  // A clean match auto-stamps the checkpoint forward.
+  // A clean match is logged to history and moves the checkpoint forward.
   let recordedThrough = acct.reconciled_through;
-  if (reconciled && (!acct.reconciled_through || d.as_of_date > acct.reconciled_through)) {
-    recordedThrough = await stampCheckpoint(supabase, user.id, acct.id, d.as_of_date, round2(d.statement_balance), recordedThrough);
+  if (reconciled) {
+    await recordReconciliation(supabase, user.id, acct.id, d.as_of_date, round2(d.statement_balance), "matched", ledgerBalance, difference);
+    if (!acct.reconciled_through || d.as_of_date > acct.reconciled_through) {
+      recordedThrough = await moveCheckpoint(supabase, user.id, acct.id, d.as_of_date, round2(d.statement_balance), recordedThrough);
+    }
+    revalidatePath("/accounts");
+    revalidatePath("/accounts/reconcile");
   }
 
   // The transactions inside the measured window, to compare line-by-line against
@@ -585,7 +614,10 @@ export async function attestReconciliation(input: ReconcileInput): Promise<Recon
   if (acct.reconciled_through && d.as_of_date < acct.reconciled_through) {
     return { ok: false, error: `Already reconciled through ${acct.reconciled_through}, which is later than ${d.as_of_date}.` };
   }
-  const recordedThrough = await stampCheckpoint(supabase, user.id, acct.id, d.as_of_date, round2(d.statement_balance), acct.reconciled_through);
+  await recordReconciliation(supabase, user.id, acct.id, d.as_of_date, round2(d.statement_balance), "attested", null, null);
+  const recordedThrough = await moveCheckpoint(supabase, user.id, acct.id, d.as_of_date, round2(d.statement_balance), acct.reconciled_through);
+  revalidatePath("/accounts");
+  revalidatePath("/accounts/reconcile");
   return {
     ok: true,
     account: acct.name,

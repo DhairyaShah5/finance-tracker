@@ -75,6 +75,32 @@ export interface Database {
         Update: Partial<Database["public"]["Tables"]["accounts"]["Insert"]>;
         Relationships: [];
       };
+      account_reconciliations: {
+        Row: {
+          id: string;
+          user_id: string;
+          account_id: string;
+          as_of_date: string;
+          statement_balance: number;
+          ledger_balance: number | null;
+          difference: number | null;
+          method: "matched" | "attested";
+        } & Timestamps & WithUpdated;
+        Insert: {
+          id?: string;
+          user_id: string;
+          account_id: string;
+          as_of_date: string;
+          statement_balance: number;
+          ledger_balance?: number | null;
+          difference?: number | null;
+          method?: "matched" | "attested";
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["account_reconciliations"]["Insert"]>;
+        Relationships: [];
+      };
       categories: {
         Row: {
           id: string;

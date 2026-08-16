@@ -20,8 +20,16 @@ import { fmtMoney, fmtDate, todayISO } from "@/lib/format";
 import { reconcileAccount, attestReconciliation, type ReconcileResult } from "../actions";
 
 type Acct = { id: string; name: string; isCredit: boolean; balance: number; reconciledThrough: string | null };
+type ReconRecord = {
+  accountId: string;
+  asOf: string;
+  statementBalance: number;
+  difference: number | null;
+  method: "matched" | "attested";
+  recordedOn: string;
+};
 
-export function ReconcileView({ accounts }: { accounts: Acct[] }) {
+export function ReconcileView({ accounts, history }: { accounts: Acct[]; history: ReconRecord[] }) {
   const [accountId, setAccountId] = React.useState(accounts[0]?.id ?? "");
   const [date, setDate] = React.useState(todayISO());
   const [balance, setBalance] = React.useState("");
@@ -31,6 +39,7 @@ export function ReconcileView({ accounts }: { accounts: Acct[] }) {
 
   const acct = accounts.find((a) => a.id === accountId);
   const canSubmit = Boolean(accountId) && balance.trim() !== "";
+  const acctHistory = history.filter((h) => h.accountId === accountId);
 
   function check() {
     if (!accountId) return void toast.error("Pick an account.");
@@ -218,6 +227,50 @@ export function ReconcileView({ accounts }: { accounts: Acct[] }) {
           </CardContent>
         </Card>
       ) : null}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">
+            Reconciliation history{acct ? <span className="ml-2 font-normal text-muted-foreground">{acct.name}</span> : null}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {acctHistory.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No reconciliations recorded for this account yet. Each statement you reconcile shows up here.
+            </p>
+          ) : (
+            <div className="overflow-x-auto rounded-md border">
+              <table className="w-full text-sm tnum">
+                <thead>
+                  <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
+                    <th className="px-3 py-2 font-medium">Statement date</th>
+                    <th className="px-3 py-2 text-right font-medium">Closing balance</th>
+                    <th className="px-3 py-2 font-medium">Result</th>
+                    <th className="px-3 py-2 font-medium">Reconciled on</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {acctHistory.map((h) => (
+                    <tr key={h.asOf} className="border-b last:border-0">
+                      <td className="px-3 py-1.5 whitespace-nowrap">{fmtDate(h.asOf, "short")}</td>
+                      <td className="px-3 py-1.5 text-right">{fmtMoney(h.statementBalance, { cents: true })}</td>
+                      <td className="px-3 py-1.5">
+                        {h.method === "matched" ? (
+                          <span className="text-emerald-600 dark:text-emerald-500">Matched</span>
+                        ) : (
+                          <span className="text-sky-600 dark:text-sky-500">Attested</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-1.5 whitespace-nowrap text-muted-foreground">{fmtDate(h.recordedOn, "short")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
