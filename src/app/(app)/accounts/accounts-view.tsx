@@ -12,6 +12,7 @@ import {
   Pencil,
   Plus,
   Trash2,
+  Upload,
   Wallet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -172,6 +173,9 @@ export function AccountsView({ activity }: { activity: AccountActivity[] }) {
         description="Live balances across every bank, card, and cash stash."
         actions={
           <>
+            <Button variant="ghost" onClick={() => router.push("/accounts/import")} className="gap-1.5">
+              <Upload className="size-4" /> Import
+            </Button>
             <Button variant="outline" onClick={onTransfer} className="gap-1.5">
               <ArrowRightLeft className="size-4" /> Transfer
             </Button>
