@@ -40,10 +40,13 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# personal financial data — keep the workbook, scratch dumps & analysis out of git
+# personal financial data — NEVER commit bank statements, exports, or reports
 /data/*.xlsx
 /data/_scratch_*
 /_research/
+Banks/
+*.pdf
+*.xlsx
 
 # graphify — local knowledge-graph tooling (machine-specific hook path + build output)
 /graphify-out/
