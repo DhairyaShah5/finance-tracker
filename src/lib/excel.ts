@@ -313,6 +313,117 @@ function buildTransactions(wb: ExcelJS.Workbook, data: ExportData) {
 }
 
 // ----------------------------------------------------------------------------
+// Transfers - every internal money move between your own accounts, in one place
+// so card paydowns and account-to-account moves can be audited without scrolling
+// the whole ledger. A transfer is NOT one row: logTransfer() writes an outflow on
+// `from` and an inflow on `to`, and there is no id linking them, so we pair the
+// two legs back together by (date, amount) plus a matching note or the default
+// "Transfer to X" / "Transfer from Y" wording. Category-linked savings deposits
+// (Tuition Vault -> Marcus HYSA, Investment -> RobinHood) are single non-transfer
+// outflows routed by category, so they're added directly. Legs that never pair
+// are one-sided by nature (a reimbursement landing, or money fronted out) and are
+// kept, labelled, so nothing is silently dropped.
+// ----------------------------------------------------------------------------
+function buildTransfers(wb: ExcelJS.Workbook, data: ExportData) {
+  const cols: ColDef[] = [
+    { header: "Date", key: "date", width: 13, numFmt: DATEFMT },
+    { header: "From", key: "from", width: 22 },
+    { header: "To", key: "to", width: 22 },
+    { header: "Amount", key: "amount", width: 13, numFmt: MONEY },
+    { header: "Type", key: "type", width: 20 },
+    { header: "Note", key: "note", width: 34 },
+  ];
+  const ws = dataSheet(wb, "Transfers", "FF0EA5E9", cols);
+
+  const nameOf = new Map(data.accounts.map((a) => [a.id, a.name]));
+  const isCard = new Map(data.accounts.map((a) => [a.id, a.is_credit || a.type === "credit_card"]));
+  const linkOf = new Map(
+    data.categories.filter((c) => c.linked_account_id).map((c) => [c.id, c.linked_account_id as string]),
+  );
+  const OUTSIDE = "(outside your accounts)";
+
+  interface Row { date: string; from: string; to: string; amount: number; type: string; note: string }
+  const rows: Row[] = [];
+
+  // 1) Category-linked savings/investment deposits (non-transfer outflow whose
+  //    category points at a destination account = money into that stash).
+  for (const t of data.transactions) {
+    if (t.direction !== "outflow" || t.is_transfer || !t.category_id) continue;
+    const dest = linkOf.get(t.category_id);
+    if (!dest) continue;
+    rows.push({
+      date: t.txn_date,
+      from: nameOf.get(t.account_id) ?? "",
+      to: nameOf.get(dest) ?? "",
+      amount: r2(t.amount),
+      type: "To savings",
+      note: t.description,
+    });
+  }
+
+  // 2) Flagged transfers: pair each outflow leg with its matching inflow leg.
+  const norm = (s: string) => s.trim().toLowerCase().replace(/^transfer (to|from) /, "");
+  const ins = data.transactions.filter((t) => t.is_transfer && t.direction === "inflow");
+  const usedIn = new Set<string>();
+  const matchFor = (out: TransactionRow): TransactionRow | undefined =>
+    ins.find((i) => {
+      if (usedIn.has(i.id) || i.txn_date !== out.txn_date || r2(i.amount) !== r2(out.amount)) return false;
+      if (norm(i.description) === norm(out.description)) return true; // shared/copied note
+      // default wording: "Transfer to {toName}" pairs with "Transfer from {fromName}"
+      return (
+        out.description.trim().toLowerCase() === `transfer to ${(nameOf.get(i.account_id) ?? "").toLowerCase()}` &&
+        i.description.trim().toLowerCase() === `transfer from ${(nameOf.get(out.account_id) ?? "").toLowerCase()}`
+      );
+    });
+
+  for (const out of data.transactions) {
+    if (!out.is_transfer || out.direction !== "outflow") continue;
+    const match = matchFor(out);
+    if (match) {
+      usedIn.add(match.id);
+      rows.push({
+        date: out.txn_date,
+        from: nameOf.get(out.account_id) ?? "",
+        to: nameOf.get(match.account_id) ?? "",
+        amount: r2(out.amount),
+        type: isCard.get(match.account_id) ? "Card payment" : "Between accounts",
+        note: out.description,
+      });
+    } else {
+      rows.push({
+        date: out.txn_date,
+        from: nameOf.get(out.account_id) ?? "",
+        to: OUTSIDE,
+        amount: r2(out.amount),
+        type: "Fronted / sent out",
+        note: out.description,
+      });
+    }
+  }
+  for (const i of ins) {
+    if (usedIn.has(i.id)) continue;
+    rows.push({
+      date: i.txn_date,
+      from: OUTSIDE,
+      to: nameOf.get(i.account_id) ?? "",
+      amount: r2(i.amount),
+      type: "Reimbursement in",
+      note: i.description,
+    });
+  }
+
+  // Newest first, matching the Transactions sheet.
+  rows.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  for (const r of rows) {
+    ws.addRow({ date: xlDate(r.date), from: r.from, to: r.to, amount: r.amount, type: r.type, note: r.note });
+  }
+  const last = ws.rowCount;
+  zebra(ws, 2, last, cols.length);
+  autofilter(ws, cols.length, last);
+  totalsRow(ws, "type", ["amount"], 2, last);
+}
+
+// ----------------------------------------------------------------------------
 // Monthly Summary - balance chain + earned cash flow per month
 // ----------------------------------------------------------------------------
 function buildMonthlySummary(wb: ExcelJS.Workbook, data: ExportData, netWorth: number) {
@@ -680,6 +791,7 @@ export async function buildWorkbook(data: ExportData): Promise<Buffer> {
 
   buildOverview(wb, data, netWorth);
   buildTransactions(wb, data);
+  buildTransfers(wb, data);
   buildMonthlySummary(wb, data, netWorth);
   buildCategories(wb, data);
   buildInsights(wb, data);
