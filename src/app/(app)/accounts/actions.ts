@@ -407,6 +407,89 @@ export async function commitTransferImport(rowsInput: ImportRow[]): Promise<Acti
   return { ok: true, inserted: inserts.length };
 }
 
+// ---------------------------------------------------------------------------
+// Statement reconciliation - the going-forward safeguard. Given an account, a
+// statement closing date, and the statement's closing balance, compute what the
+// ledger says the balance was on that date (today's balance minus everything
+// logged after it) and report the difference. Zero = reconciled; anything else
+// means a transaction in that period is missing or wrong (most often an
+// unlogged credit-card payment). Enter balances the way the app shows the
+// account: credit cards are negative when you owe.
+// ---------------------------------------------------------------------------
+const reconcileSchema = z.object({
+  account_id: z.string().uuid("Pick an account."),
+  as_of_date: z.string().min(10, "Enter the statement closing date."),
+  statement_balance: z.coerce.number(),
+});
+export type ReconcileInput = z.input<typeof reconcileSchema>;
+
+export interface ReconcileResult {
+  ok: boolean;
+  error?: string;
+  account?: string;
+  isCredit?: boolean;
+  asOf?: string;
+  ledgerBalance?: number;
+  statementBalance?: number;
+  difference?: number;
+  reconciled?: boolean;
+  periodTxns?: { date: string; description: string; signed: number }[];
+}
+
+export async function reconcileAccount(input: ReconcileInput): Promise<ReconcileResult> {
+  const parsed = reconcileSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
+  const { supabase, user } = await authed();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const d = parsed.data;
+
+  const [acctRes, txnsRes, catsRes] = await Promise.all([
+    supabase.from("accounts").select("*").eq("id", d.account_id).eq("user_id", user.id).maybeSingle(),
+    supabase.from("transactions").select("*").eq("user_id", user.id),
+    supabase.from("categories").select("id, linked_account_id").eq("user_id", user.id),
+  ]);
+  const acct = acctRes.data;
+  if (!acct) return { ok: false, error: "Account not found." };
+  const txns = txnsRes.data ?? [];
+  const cats = catsRes.data ?? [];
+
+  const current = accountActivity(txns, [acct], cats).find((a) => a.account.id === acct.id)?.balance ?? 0;
+
+  // Everything logged AFTER the statement date, on this account: its own signed
+  // movements plus category-linked credits (Tuition Vault/Investment deposits).
+  const linkedCatIds = new Set(cats.filter((c) => c.linked_account_id === acct.id).map((c) => c.id));
+  let after = 0;
+  for (const t of txns) {
+    if (t.txn_date <= d.as_of_date) continue;
+    if (t.account_id === acct.id) after += t.direction === "inflow" ? t.amount : -t.amount;
+    else if (t.direction === "outflow" && !t.is_transfer && t.category_id && linkedCatIds.has(t.category_id)) after += t.amount;
+  }
+  const ledgerBalance = round2(current - after);
+  const difference = round2(ledgerBalance - round2(d.statement_balance));
+
+  // The account's own transactions in the ~40 days up to the statement date -
+  // i.e. what should appear on this statement, to eyeball against it.
+  const start = new Date(`${d.as_of_date.slice(0, 10)}T12:00:00Z`);
+  start.setUTCDate(start.getUTCDate() - 40);
+  const startISO = start.toISOString().slice(0, 10);
+  const periodTxns = txns
+    .filter((t) => t.account_id === acct.id && t.txn_date <= d.as_of_date && t.txn_date >= startISO)
+    .sort((a, b) => (a.txn_date < b.txn_date ? -1 : a.txn_date > b.txn_date ? 1 : 0))
+    .map((t) => ({ date: t.txn_date, description: t.description, signed: round2(t.direction === "inflow" ? t.amount : -t.amount) }));
+
+  return {
+    ok: true,
+    account: acct.name,
+    isCredit: acct.is_credit,
+    asOf: d.as_of_date,
+    ledgerBalance,
+    statementBalance: round2(d.statement_balance),
+    difference,
+    reconciled: Math.abs(difference) < 0.005,
+    periodTxns,
+  };
+}
+
 export async function deleteAccount(id: string): Promise<ActionResult> {
   const { supabase, user } = await authed();
   if (!user) return { ok: false, error: "Not signed in." };

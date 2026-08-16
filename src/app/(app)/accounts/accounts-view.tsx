@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   ArrowRightLeft,
+  ClipboardCheck,
   CreditCard,
   Landmark,
   LineChart,
@@ -173,6 +174,9 @@ export function AccountsView({ activity }: { activity: AccountActivity[] }) {
         description="Live balances across every bank, card, and cash stash."
         actions={
           <>
+            <Button variant="ghost" onClick={() => router.push("/accounts/reconcile")} className="gap-1.5">
+              <ClipboardCheck className="size-4" /> Reconcile
+            </Button>
             <Button variant="ghost" onClick={() => router.push("/accounts/import")} className="gap-1.5">
               <Upload className="size-4" /> Import
             </Button>
