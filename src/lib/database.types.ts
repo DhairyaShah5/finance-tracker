@@ -54,6 +54,7 @@ export interface Database {
           is_credit: boolean;
           include_in_net_worth: boolean;
           display_order: number;
+          reconciled_through: string | null;
         } & Timestamps & WithUpdated;
         Insert: {
           id?: string;
@@ -65,6 +66,7 @@ export interface Database {
           is_credit?: boolean;
           include_in_net_worth?: boolean;
           display_order?: number;
+          reconciled_through?: string | null;
           created_at?: string;
           updated_at?: string;
         };

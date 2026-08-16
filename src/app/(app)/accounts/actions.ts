@@ -433,6 +433,7 @@ export interface ReconcileResult {
   statementBalance?: number;
   difference?: number;
   reconciled?: boolean;
+  recordedThrough?: string | null;
   periodTxns?: { date: string; description: string; signed: number }[];
 }
 
@@ -466,6 +467,22 @@ export async function reconcileAccount(input: ReconcileInput): Promise<Reconcile
   }
   const ledgerBalance = round2(current - after);
   const difference = round2(ledgerBalance - round2(d.statement_balance));
+  const reconciled = Math.abs(difference) < 0.005;
+
+  // Stamp the account when it reconciles, only ever moving the date forward.
+  let recordedThrough = acct.reconciled_through;
+  if (reconciled && (!acct.reconciled_through || d.as_of_date > acct.reconciled_through)) {
+    const { error: stampErr } = await supabase
+      .from("accounts")
+      .update({ reconciled_through: d.as_of_date })
+      .eq("id", acct.id)
+      .eq("user_id", user.id);
+    if (!stampErr) {
+      recordedThrough = d.as_of_date;
+      revalidatePath("/accounts");
+      revalidatePath("/accounts/reconcile");
+    }
+  }
 
   // The account's own transactions in the ~40 days up to the statement date -
   // i.e. what should appear on this statement, to eyeball against it.
@@ -485,7 +502,8 @@ export async function reconcileAccount(input: ReconcileInput): Promise<Reconcile
     ledgerBalance,
     statementBalance: round2(d.statement_balance),
     difference,
-    reconciled: Math.abs(difference) < 0.005,
+    reconciled,
+    recordedThrough,
     periodTxns,
   };
 }

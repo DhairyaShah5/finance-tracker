@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { AlertTriangle, ArrowLeft, CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ export function ReconcileView({ accounts }: { accounts: Acct[] }) {
   const [balance, setBalance] = React.useState("");
   const [result, setResult] = React.useState<ReconcileResult | null>(null);
   const [pending, start] = React.useTransition();
+  const router = useRouter();
 
   const acct = accounts.find((a) => a.id === accountId);
 
@@ -39,6 +41,10 @@ export function ReconcileView({ accounts }: { accounts: Acct[] }) {
         return void toast.error(res.error ?? "Could not reconcile.");
       }
       setResult(res);
+      if (res.reconciled) {
+        toast.success(`Stamped reconciled through ${res.recordedThrough}.`);
+        router.refresh();
+      }
     });
   }
 
@@ -113,7 +119,8 @@ export function ReconcileView({ accounts }: { accounts: Acct[] }) {
                 <div>
                   <p className="font-medium text-emerald-600 dark:text-emerald-500">Reconciled</p>
                   <p className="text-sm text-muted-foreground">
-                    Your ledger matches the statement to the cent on {result.asOf}. Nothing missing.
+                    Your ledger matches the statement to the cent on {result.asOf}. Nothing missing. This account
+                    is now stamped <span className="font-medium text-foreground">reconciled through {result.recordedThrough}</span>.
                   </p>
                 </div>
               </div>

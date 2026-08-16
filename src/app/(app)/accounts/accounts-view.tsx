@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   ArrowRightLeft,
+  CheckCircle2,
   ClipboardCheck,
   CreditCard,
   Landmark,
@@ -36,7 +37,7 @@ import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
 import { Money } from "@/components/money";
 import { DonutBreakdown } from "@/components/donut-breakdown";
-import { hueColor } from "@/lib/format";
+import { fmtDate, hueColor } from "@/lib/format";
 import type { AccountActivity } from "@/lib/calc";
 import { useReadOnly } from "@/components/read-only-context";
 import { AccountDialog } from "./account-dialog";
@@ -290,6 +291,16 @@ export function AccountsView({ activity }: { activity: AccountActivity[] }) {
                             <Badge variant="outline" className="text-[10px]">Excluded</Badge>
                           </div>
                         ) : null}
+                        <div className="mt-1.5 flex items-center gap-1 text-[11px]">
+                          {a.account.reconciled_through ? (
+                            <span className="inline-flex items-center gap-1 text-muted-foreground">
+                              <CheckCircle2 className="size-3 text-emerald-600 dark:text-emerald-500" />
+                              Reconciled thru {fmtDate(a.account.reconciled_through, "short")}
+                            </span>
+                          ) : (
+                            <span className="text-amber-600/90 dark:text-amber-500/90">Not reconciled yet</span>
+                          )}
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
