@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { createServiceClient } from "@/lib/supabase/service";
 import type { Database } from "@/lib/database.types";
 
-// Weekly RobinHood deposit, added automatically every Monday. Replicates the
+// Weekly RobinHood deposit, added automatically every Tuesday. Replicates the
 // hand-entered pattern exactly: a $100 outflow from Chase Checking in the
 // Investment category (which routes into the RobinHood account), tagged savings,
 // described "RobinHood #N" with an auto-incrementing counter.
@@ -31,8 +31,8 @@ const DEPOSIT = {
   timeZone: "America/Los_Angeles",
 };
 
-/** The calendar date of this week's Monday, in the user's local timezone. */
-function localMonday(now: Date, timeZone: string): string {
+/** The calendar date of this week's Tuesday, in the user's local timezone. */
+function localTuesday(now: Date, timeZone: string): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone,
     year: "numeric",
@@ -42,11 +42,11 @@ function localMonday(now: Date, timeZone: string): string {
   }).formatToParts(now);
   const get = (t: string) => parts.find((p) => p.type === t)!.value;
   const wd = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(get("weekday"));
-  const daysSinceMonday = (wd + 6) % 7;
+  const daysSinceTuesday = (wd + 5) % 7;
   // Anchor the local calendar date at UTC midnight and do integer day math, so
   // there's no timezone drift; slice back to YYYY-MM-DD.
   const anchor = new Date(`${get("year")}-${get("month")}-${get("day")}T00:00:00Z`);
-  anchor.setUTCDate(anchor.getUTCDate() - daysSinceMonday);
+  anchor.setUTCDate(anchor.getUTCDate() - daysSinceTuesday);
   return anchor.toISOString().slice(0, 10);
 }
 
@@ -87,7 +87,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const monday = localMonday(new Date(), DEPOSIT.timeZone);
+  const tuesday = localTuesday(new Date(), DEPOSIT.timeZone);
 
   // Idempotent: skip if this week's RobinHood deposit is already on the ledger
   // (whether added by the cron, a retry, or by hand).
@@ -96,11 +96,11 @@ export async function GET(request: Request) {
     .select("id")
     .eq("user_id", userId)
     .eq("category_id", cat.id)
-    .eq("txn_date", monday)
+    .eq("txn_date", tuesday)
     .ilike("description", `${DEPOSIT.labelPrefix}%`)
     .maybeSingle();
   if (already?.id) {
-    return Response.json({ ok: true, action: "skipped", reason: "already added this week", txn_date: monday });
+    return Response.json({ ok: true, action: "skipped", reason: "already added this week", txn_date: tuesday });
   }
 
   const { data: prior } = await supabase
@@ -112,7 +112,7 @@ export async function GET(request: Request) {
 
   const row: TxnInsert = {
     user_id: userId,
-    txn_date: monday,
+    txn_date: tuesday,
     account_id: acct.id,
     category_id: cat.id,
     description,
@@ -130,5 +130,5 @@ export async function GET(request: Request) {
   const { error } = await supabase.from("transactions").insert(row);
   if (error) return Response.json({ ok: false, error: error.message }, { status: 500 });
 
-  return Response.json({ ok: true, action: "created", description, txn_date: monday, amount: DEPOSIT.amount });
+  return Response.json({ ok: true, action: "created", description, txn_date: tuesday, amount: DEPOSIT.amount });
 }
