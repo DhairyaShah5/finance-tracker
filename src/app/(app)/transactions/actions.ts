@@ -119,7 +119,7 @@ async function authed() {
 }
 
 function revalidate() {
-  for (const p of ["/transactions", "/", "/accounts", "/debtors", "/insights", "/budget"]) revalidatePath(p);
+  for (const p of ["/transactions", "/", "/accounts", "/people", "/insights", "/budget"]) revalidatePath(p);
 }
 
 export async function createTransaction(input: TransactionInput): Promise<ActionResult> {
@@ -158,11 +158,11 @@ export async function deleteTransaction(id: string): Promise<ActionResult> {
   const { supabase, user } = await authed();
   if (!user) return { ok: false, error: "Not signed in." };
 
-  // If this is a reimbursement inflow, grab its link + amount first so we can
-  // roll back the parent expense's running total after it's gone.
+  // If this is a reimbursement inflow or a creditor repayment, grab its links +
+  // amount first so we can roll back the parent's running total after it's gone.
   const { data: row } = await supabase
     .from("transactions")
-    .select("amount, reimburses_id")
+    .select("amount, reimburses_id, repays_id, is_transfer")
     .eq("id", id)
     .eq("user_id", user.id)
     .single();
@@ -199,6 +199,27 @@ export async function deleteTransaction(id: string): Promise<ActionResult> {
           .eq("id", row.reimburses_id)
           .eq("user_id", user.id);
       }
+    }
+  }
+
+  // Creditor repayment: a repayment is an is_transfer outflow linked to a borrow
+  // via repays_id. Deleting it restores the debt - subtract it back off the
+  // borrow's repaid_amount. (The "they paid for me" expense also carries
+  // repays_id but isn't a transfer, so it never touched repaid_amount; skip it.)
+  if (row?.repays_id && row.is_transfer) {
+    const { data: borrow } = await supabase
+      .from("transactions")
+      .select("repaid_amount")
+      .eq("id", row.repays_id)
+      .eq("user_id", user.id)
+      .single();
+    if (borrow) {
+      const newTotal = round2(Math.max(0, (borrow.repaid_amount ?? 0) - row.amount));
+      await supabase
+        .from("transactions")
+        .update({ repaid_amount: newTotal })
+        .eq("id", row.repays_id)
+        .eq("user_id", user.id);
     }
   }
 

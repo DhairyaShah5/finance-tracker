@@ -31,7 +31,7 @@ const NAV = [
   { href: "/budget", label: "Budget", icon: Target },
   { href: "/accounts", label: "Accounts", icon: Landmark },
   { href: "/journey", label: "Yearly Journey", icon: Sparkles },
-  { href: "/debtors", label: "Debtors", icon: Users },
+  { href: "/people", label: "People", icon: Users },
   { href: "/india", label: "India Transfers", icon: Globe },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

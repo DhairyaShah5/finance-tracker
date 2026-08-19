@@ -5,6 +5,7 @@
 import type {
   AccountRow,
   CategoryRow,
+  CreditorRow,
   DebtorRow,
   IndiaTransferRow,
   SettingsRow,
@@ -740,6 +741,52 @@ export function debtorBalances(
 
 /** Total currently owed to you across all debtors (derived from the ledger). */
 export function sumOwed(balances: DebtorBalance[]): number {
+  return round2(balances.reduce((s, b) => s + b.outstanding, 0));
+}
+
+// ---------------------------------------------------------------------------
+// Creditors - people YOU owe. The exact mirror of debtors: a creditor's balance
+// is DERIVED from the ledger, never hand-typed. The debt-creating event is a
+// "borrow" - an excluded inflow (is_transfer, so it's not counted as income)
+// tagged with creditor_id: the money you took is now sitting in your accounts
+// (or paid for something of yours), owed back. Outstanding = borrowed − repaid.
+//
+// Three shapes carry creditor_id; direction + is_transfer + repays_id tell them
+// apart, so nothing is ever double-counted:
+//   borrow-inflow     inflow,  is_transfer, repays_id null → the liability
+//   repayment-outflow outflow, is_transfer, repays_id set  → shrinks it (repaid)
+//   expense-outflow   outflow, NOT transfer, repays_id null → your own spending
+//                     (the "they paid for me directly" half; pairs with a borrow)
+// ---------------------------------------------------------------------------
+/** Still-outstanding payable on one borrow (0 for anything that isn't a borrow). */
+export function outstandingPayable(
+  t: Pick<TransactionRow, "direction" | "amount" | "is_transfer" | "creditor_id" | "repays_id" | "repaid_amount">,
+): number {
+  if (t.direction !== "inflow" || !t.is_transfer || !t.creditor_id || t.repays_id) return 0;
+  return round2(Math.max(0, t.amount - (t.repaid_amount ?? 0)));
+}
+
+export interface CreditorBalance {
+  creditor: CreditorRow;
+  outstanding: number; // derived from linked borrows, minus what you've repaid
+}
+
+/** Outstanding balance per creditor, summed from the borrows linked to each. */
+export function creditorBalances(
+  txns: TransactionRow[],
+  creditors: CreditorRow[],
+): CreditorBalance[] {
+  const byCreditor = new Map<string, number>();
+  for (const t of txns) {
+    if (!t.creditor_id) continue;
+    const out = outstandingPayable(t);
+    if (out > 0.005) byCreditor.set(t.creditor_id, round2((byCreditor.get(t.creditor_id) ?? 0) + out));
+  }
+  return creditors.map((c) => ({ creditor: c, outstanding: byCreditor.get(c.id) ?? 0 }));
+}
+
+/** Total you currently owe across all creditors (derived from the ledger). */
+export function sumOwedByMe(balances: CreditorBalance[]): number {
   return round2(balances.reduce((s, b) => s + b.outstanding, 0));
 }
 

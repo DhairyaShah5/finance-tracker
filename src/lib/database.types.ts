@@ -169,6 +169,24 @@ export interface Database {
         Update: Partial<Database["public"]["Tables"]["debtors"]["Insert"]>;
         Relationships: [];
       };
+      creditors: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          note: string | null;
+        } & Timestamps & WithUpdated;
+        Insert: {
+          id?: string;
+          user_id: string;
+          name: string;
+          note?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["creditors"]["Insert"]>;
+        Relationships: [];
+      };
       transactions: {
         Row: {
           id: string;
@@ -190,6 +208,9 @@ export interface Database {
           reimbursed: boolean;
           reimbursed_amount: number;
           reimburses_id: string | null;
+          creditor_id: string | null;
+          repaid_amount: number;
+          repays_id: string | null;
           notes: string | null;
         } & Timestamps & WithUpdated;
         Insert: {
@@ -212,6 +233,9 @@ export interface Database {
           reimbursed?: boolean;
           reimbursed_amount?: number;
           reimburses_id?: string | null;
+          creditor_id?: string | null;
+          repaid_amount?: number;
+          repays_id?: string | null;
           notes?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -283,6 +307,7 @@ export type AccountRow = T["accounts"]["Row"];
 export type CategoryRow = T["categories"]["Row"];
 export type InflowTypeRow = T["inflow_types"]["Row"];
 export type DebtorRow = T["debtors"]["Row"];
+export type CreditorRow = T["creditors"]["Row"];
 export type TransactionRow = T["transactions"]["Row"];
 export type IndiaTransferRow = T["india_transfers"]["Row"];
 export type OtherIncomeRow = T["other_income"]["Row"];
