@@ -14,6 +14,8 @@ import {
   isSavingsTxn,
   myAmount,
   debtorBalances,
+  creditorBalances,
+  sumOwedByMe,
   signed,
 } from "@/lib/calc";
 import { fmtMoney, fmtDate, hueColor, monthKey, monthLabel } from "@/lib/format";
@@ -36,12 +38,13 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   const { supabase, user } = await requireUser();
 
-  const [settingsRes, txnsRes, accountsRes, categoriesRes, debtorsRes, inflowRes] = await Promise.all([
+  const [settingsRes, txnsRes, accountsRes, categoriesRes, debtorsRes, creditorsRes, inflowRes] = await Promise.all([
     supabase.from("settings").select("*").eq("user_id", user.id).single(),
     supabase.from("transactions").select("*").eq("user_id", user.id).order("txn_date", { ascending: true }),
     supabase.from("accounts").select("*").eq("user_id", user.id).order("display_order"),
     supabase.from("categories").select("*").eq("user_id", user.id),
     supabase.from("debtors").select("*").eq("user_id", user.id),
+    supabase.from("creditors").select("*").eq("user_id", user.id),
     supabase.from("inflow_types").select("*").eq("user_id", user.id),
   ]);
 
@@ -51,6 +54,7 @@ export default async function DashboardPage() {
   const accounts = accountsRes.data ?? [];
   const categories = categoriesRes.data ?? [];
   const debtors = debtorsRes.data ?? [];
+  const creditors = creditorsRes.data ?? [];
   const inflowTypes = inflowRes.data ?? [];
 
   const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -86,14 +90,14 @@ export default async function DashboardPage() {
     .filter((b) => b.outstanding > 0.005)
     .map((b) => ({ id: b.debtor.id, name: b.debtor.name, note: b.debtor.note, amount: b.outstanding }))
     .sort((a, b) => b.amount - a.amount);
-  const owedHint =
-    owedDebtors.length && owedReimbursables.length
-      ? `${owedDebtors.length} debtor${owedDebtors.length === 1 ? "" : "s"} + ${owedReimbursables.length} reimbursable`
-      : owedDebtors.length
-        ? `${owedDebtors.length} debtor${owedDebtors.length === 1 ? "" : "s"}`
-        : owedReimbursables.length
-          ? `${fmtMoney(totalOwed)} reimbursable`
-          : "All settled";
+  // The other side of the ledger: money you owe people (creditors). The single
+  // People KPI shows your NET position - receivables minus payables - and flips
+  // its label to "I owe" when you owe more than you're owed.
+  const owedCreditors = creditorBalances(txns, creditors)
+    .filter((b) => b.outstanding > 0.005)
+    .map((b) => ({ id: b.creditor.id, name: b.creditor.name, note: b.creditor.note, amount: b.outstanding }))
+    .sort((a, b) => b.amount - a.amount);
+  const oweThem = sumOwedByMe(creditorBalances(txns, creditors));
 
   // Income split by source (each paycheck / inflow type) for the modal. Arrival
   // capital is starting funds, not income, so it's left out here just like in
@@ -289,10 +293,11 @@ export default async function DashboardPage() {
             </Reveal>
             <Reveal delay={240} className="h-full">
               <OwedCard
-                total={totalOwed}
+                owed={totalOwed}
+                oweThem={oweThem}
                 reimbursables={owedReimbursables}
                 debtors={owedDebtors}
-                hint={owedHint}
+                creditors={owedCreditors}
               />
             </Reveal>
           </div>
