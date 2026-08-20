@@ -17,6 +17,7 @@ import {
   creditorBalances,
   sumOwedByMe,
   signed,
+  visibleLedger,
 } from "@/lib/calc";
 import { fmtMoney, fmtDate, hueColor, monthKey, monthLabel, monthAxisLabels } from "@/lib/format";
 import { PageHeader } from "@/components/page-header";
@@ -49,8 +50,9 @@ export default async function DashboardPage() {
 
   // requireUser() guarantees a settings row, but stay defensive against a null.
   const settings = settingsRes.data ?? { starting_funds: 0, budget_months: 12, savings_target: 0 };
-  const txns = txnsRes.data ?? [];
-  const accounts = accountsRes.data ?? [];
+  // Hidden accounts vanish from every number here - drop them and their
+  // transactions before anything is derived (their rows stay in the ledger).
+  const { accounts, txns } = visibleLedger(accountsRes.data ?? [], txnsRes.data ?? []);
   const categories = categoriesRes.data ?? [];
   const debtors = debtorsRes.data ?? [];
   const creditors = creditorsRes.data ?? [];

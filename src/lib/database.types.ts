@@ -53,6 +53,7 @@ export interface Database {
           opening_balance: number;
           is_credit: boolean;
           include_in_net_worth: boolean;
+          hidden: boolean;
           display_order: number;
           reconciled_through: string | null;
           reconciled_balance: number | null;
@@ -66,6 +67,7 @@ export interface Database {
           opening_balance?: number;
           is_credit?: boolean;
           include_in_net_worth?: boolean;
+          hidden?: boolean;
           display_order?: number;
           reconciled_through?: string | null;
           reconciled_balance?: number | null;

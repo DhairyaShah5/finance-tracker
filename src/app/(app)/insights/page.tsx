@@ -1,5 +1,5 @@
 import { requireUser } from "@/lib/queries";
-import { budgetGroupsByMonth, incomeByMonth, myAmount } from "@/lib/calc";
+import { budgetGroupsByMonth, incomeByMonth, myAmount, visibleLedger } from "@/lib/calc";
 import { fmtMoney, fmtPct, monthKey, monthAxisLabels } from "@/lib/format";
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
@@ -16,11 +16,13 @@ const TARGET = { needs: 0.5, wants: 0.3, savings: 0.2 };
 export default async function InsightsPage() {
   const { supabase, user } = await requireUser();
 
-  const [txnsRes, categoriesRes] = await Promise.all([
+  const [txnsRes, categoriesRes, accountsRes] = await Promise.all([
     supabase.from("transactions").select("*").eq("user_id", user.id),
     supabase.from("categories").select("*").eq("user_id", user.id),
+    supabase.from("accounts").select("*").eq("user_id", user.id),
   ]);
-  const txns = txnsRes.data ?? [];
+  // Transactions on hidden accounts are excluded from every insight.
+  const { txns } = visibleLedger(accountsRes.data ?? [], txnsRes.data ?? []);
   const categories = categoriesRes.data ?? [];
   const catById = new Map(categories.map((c) => [c.id, c]));
 

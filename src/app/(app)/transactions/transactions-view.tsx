@@ -59,10 +59,14 @@ export function TransactionsView({
   transactions,
   lookups,
   netWorth,
+  netWorthAll,
+  hiddenAccountIds,
 }: {
   transactions: TransactionRow[];
   lookups: TxnLookups;
-  netWorth: number;
+  netWorth: number; // net worth with hidden accounts excluded
+  netWorthAll: number; // net worth including hidden accounts (for the reveal toggle)
+  hiddenAccountIds: string[];
 }) {
   const router = useRouter();
   const catById = React.useMemo(
@@ -78,6 +82,21 @@ export function TransactionsView({
   const [account, setAccount] = React.useState("all");
   const [category, setCategory] = React.useState("all");
   const [direction, setDirection] = React.useState("all");
+  // Hidden accounts vanish from this page too by default; a toggle brings their
+  // rows (and their contribution to the numbers) back when you want to review.
+  const [showHidden, setShowHidden] = React.useState(false);
+  const hiddenSet = React.useMemo(() => new Set(hiddenAccountIds), [hiddenAccountIds]);
+  const hasHidden = hiddenAccountIds.length > 0;
+  const activeTxns = React.useMemo(
+    () => (showHidden ? transactions : transactions.filter((t) => !hiddenSet.has(t.account_id))),
+    [transactions, showHidden, hiddenSet],
+  );
+  const nw = showHidden ? netWorthAll : netWorth;
+  // Don't let a hidden account stay selected in the filter once its rows are gone.
+  React.useEffect(() => {
+    if (!showHidden && account !== "all" && hiddenSet.has(account)) setAccount("all");
+  }, [showHidden, account, hiddenSet]);
+  const accountOptions = showHidden ? lookups.accounts : lookups.accounts.filter((a) => !hiddenSet.has(a.id));
 
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<TransactionRow | null>(null);
@@ -93,7 +112,7 @@ export function TransactionsView({
 
   const filtered = React.useMemo(() => {
     const q = search.trim().toLowerCase();
-    return transactions
+    return activeTxns
       .filter((t) => {
         if (q && !t.description.toLowerCase().includes(q)) return false;
         if (account !== "all" && t.account_id !== account) return false;
@@ -110,7 +129,7 @@ export function TransactionsView({
       .sort((a, b) =>
         a.txn_date < b.txn_date ? 1 : a.txn_date > b.txn_date ? -1 : b.created_at.localeCompare(a.created_at),
       );
-  }, [transactions, search, account, category, direction]);
+  }, [activeTxns, search, account, category, direction]);
 
   // Group filtered transactions by month (newest month first).
   const groups = React.useMemo(() => {
@@ -136,15 +155,20 @@ export function TransactionsView({
   const real = filtered.filter((t) => !t.is_transfer);
   const totalIn = real.filter((t) => t.direction === "inflow").reduce((s, t) => s + t.amount, 0);
   const totalOut = real.filter((t) => !isSavingsTxn(t)).reduce((s, t) => s + myAmount(t), 0);
-  // Full-ledger reconciliation (independent of the active filter).
-  const recon = reconcile(transactions, netWorth);
+  // Full-ledger reconciliation (independent of the active filter). Uses the
+  // visible ledger by default; the reveal toggle folds hidden accounts back in.
+  const recon = reconcile(activeTxns, nw);
 
   // Opening/closing available-funds balance per month, from the WHOLE ledger
   // (not the filtered view) so the chain stays correct regardless of filters.
   const balances = React.useMemo(() => {
-    const nwIds = new Set(lookups.accounts.filter((a) => a.include_in_net_worth).map((a) => a.id));
-    return monthlyBalances(transactions, nwIds, netWorth);
-  }, [transactions, lookups.accounts, netWorth]);
+    const nwIds = new Set(
+      lookups.accounts
+        .filter((a) => a.include_in_net_worth && (showHidden || !hiddenSet.has(a.id)))
+        .map((a) => a.id),
+    );
+    return monthlyBalances(activeTxns, nwIds, nw);
+  }, [activeTxns, lookups.accounts, nw, showHidden, hiddenSet]);
 
   function toggle(key: string) {
     setExpanded((prev) => {
@@ -396,7 +420,7 @@ export function TransactionsView({
             <SelectTrigger className="w-full border-transparent bg-background/60 sm:w-40"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All accounts</SelectItem>
-              {lookups.accounts.map((a) => (
+              {accountOptions.map((a) => (
                 <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
               ))}
             </SelectContent>
@@ -411,6 +435,17 @@ export function TransactionsView({
             </SelectContent>
           </Select>
         </div>
+        {hasHidden ? (
+          <Button
+            variant="outline"
+            onClick={() => setShowHidden((v) => !v)}
+            className="w-full gap-1.5 border-transparent bg-background/60 sm:w-auto"
+            title={showHidden ? "Hide the accounts you've turned off in Settings" : "Temporarily show the accounts you've hidden in Settings"}
+          >
+            {showHidden ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+            {showHidden ? "Hide hidden" : "Show hidden"}
+          </Button>
+        ) : null}
         <Button onClick={onAdd} className="w-full gap-1.5 sm:w-auto">
           <Plus className="size-4" /> Add
         </Button>

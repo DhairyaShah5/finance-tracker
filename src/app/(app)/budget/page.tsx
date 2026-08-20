@@ -1,5 +1,5 @@
 import { requireUser } from "@/lib/queries";
-import { monthlyBudgetStatus, incomeByMonth } from "@/lib/calc";
+import { monthlyBudgetStatus, incomeByMonth, visibleLedger } from "@/lib/calc";
 import { monthKey } from "@/lib/format";
 import { PageHeader } from "@/components/page-header";
 import { BudgetView } from "./budget-view";
@@ -9,12 +9,14 @@ export const dynamic = "force-dynamic";
 export default async function BudgetPage() {
   const { supabase, user } = await requireUser();
 
-  const [txnsRes, catsRes, settingsRes] = await Promise.all([
+  const [txnsRes, catsRes, settingsRes, accountsRes] = await Promise.all([
     supabase.from("transactions").select("*").eq("user_id", user.id),
     supabase.from("categories").select("*").eq("user_id", user.id).order("display_order"),
     supabase.from("settings").select("starting_funds, budget_months, savings_target").eq("user_id", user.id).single(),
+    supabase.from("accounts").select("*").eq("user_id", user.id),
   ]);
-  const txns = txnsRes.data ?? [];
+  // Transactions on hidden accounts are excluded from every budget figure.
+  const { txns } = visibleLedger(accountsRes.data ?? [], txnsRes.data ?? []);
   const categories = catsRes.data ?? [];
   const settings = settingsRes.data ?? { starting_funds: 0, budget_months: 12, savings_target: 0 };
 

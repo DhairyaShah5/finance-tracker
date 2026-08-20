@@ -1,5 +1,5 @@
 import { requireUser } from "@/lib/queries";
-import { accountActivity } from "@/lib/calc";
+import { accountActivity, visibleLedger } from "@/lib/calc";
 import { PageHeader } from "@/components/page-header";
 import { TransactionsView } from "./transactions-view";
 
@@ -16,28 +16,37 @@ export default async function TransactionsPage() {
     supabase.from("debtors").select("*").eq("user_id", user.id).order("name"),
   ]);
 
-  const txns = txnsRes.data ?? [];
-  const accounts = accountsRes.data ?? [];
+  // The Transactions page keeps every row (it's the raw ledger) but defaults to
+  // hiding accounts you've turned off, with a reveal toggle. Compute net worth
+  // both ways so the toggle can flip the numbers to match what's shown.
+  const allTxns = txnsRes.data ?? [];
+  const allAccounts = accountsRes.data ?? [];
+  const { accounts: visAccts, txns: visTxns, hiddenIds } = visibleLedger(allAccounts, allTxns);
 
   // How often each category is used, so the Add-transaction picker can lead with
   // the ones logged most (Eating Out, Groceries, ...).
   const categoryCounts: Record<string, number> = {};
-  for (const t of txns) {
+  for (const t of allTxns) {
     if (t.category_id) categoryCounts[t.category_id] = (categoryCounts[t.category_id] ?? 0) + 1;
   }
 
-  const netWorth = accountActivity(txns, accounts)
-    .filter((a) => a.account.include_in_net_worth)
-    .reduce((s, a) => s + a.balance, 0);
+  const sumNetWorth = (txns: typeof allTxns, accounts: typeof allAccounts) =>
+    accountActivity(txns, accounts)
+      .filter((a) => a.account.include_in_net_worth)
+      .reduce((s, a) => s + a.balance, 0);
+  const netWorth = sumNetWorth(visTxns, visAccts);
+  const netWorthAll = sumNetWorth(allTxns, allAccounts);
 
   return (
     <div className="space-y-6">
       <PageHeader title="Transactions" description="Every dollar in and out, your full ledger." />
       <TransactionsView
-        transactions={txns}
+        transactions={allTxns}
         netWorth={netWorth}
+        netWorthAll={netWorthAll}
+        hiddenAccountIds={[...hiddenIds]}
         lookups={{
-          accounts,
+          accounts: allAccounts,
           categories: categoriesRes.data ?? [],
           inflowTypes: inflowRes.data ?? [],
           debtors: debtorsRes.data ?? [],

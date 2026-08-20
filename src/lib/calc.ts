@@ -23,6 +23,27 @@ export function signed(t: Pick<TransactionRow, "direction" | "amount">): number 
 }
 
 /**
+ * Narrow accounts + transactions to what the app should DISPLAY, dropping every
+ * account the user has hidden along with every transaction on it. A hidden
+ * account then vanishes from all derived numbers - net worth, spending, income,
+ * budget, category and cash-flow charts - because neither its balance nor its
+ * activity reaches any calculation, while the rows themselves stay in the ledger.
+ * Feed the returned `accounts` + `txns` into the calc functions on every page
+ * except the raw Transactions list (which can opt back in to show hidden rows).
+ */
+export function visibleLedger<A extends { id: string; hidden?: boolean | null }>(
+  accounts: A[],
+  txns: TransactionRow[],
+): { accounts: A[]; txns: TransactionRow[]; hiddenIds: Set<string> } {
+  const hiddenIds = new Set(accounts.filter((a) => a.hidden).map((a) => a.id));
+  return {
+    accounts: accounts.filter((a) => !a.hidden),
+    txns: hiddenIds.size ? txns.filter((t) => !hiddenIds.has(t.account_id)) : txns,
+    hiddenIds,
+  };
+}
+
+/**
  * The arrival capital (wire from home, forex card, opening cash). These inflows
  * ARE the starting balance, so they're not counted as income - counting them
  * would double the starting funds.

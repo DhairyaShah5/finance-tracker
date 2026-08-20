@@ -646,3 +646,23 @@ export async function deleteAccount(id: string): Promise<ActionResult> {
   revalidate();
   return { ok: true };
 }
+
+/**
+ * Hide or show an account across the whole app. Hiding drops its balance from
+ * net worth and its transactions from every metric (they stay in the ledger).
+ * Touches numbers on nearly every page, so revalidate broadly.
+ */
+export async function setAccountHidden(id: string, hidden: boolean): Promise<ActionResult> {
+  const { supabase, user } = await authed();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const { error } = await supabase
+    .from("accounts")
+    .update({ hidden })
+    .eq("id", id)
+    .eq("user_id", user.id);
+  if (error) return { ok: false, error: error.message };
+  for (const p of ["/", "/accounts", "/transactions", "/insights", "/budget", "/journey", "/people", "/settings"]) {
+    revalidatePath(p);
+  }
+  return { ok: true };
+}

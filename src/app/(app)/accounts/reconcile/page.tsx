@@ -1,5 +1,5 @@
 import { requireUser } from "@/lib/queries";
-import { accountActivity } from "@/lib/calc";
+import { accountActivity, visibleLedger } from "@/lib/calc";
 import { ReconcileView } from "./reconcile-view";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +16,9 @@ export default async function ReconcilePage() {
       .eq("user_id", user.id)
       .order("as_of_date", { ascending: false }),
   ]);
-  const activity = accountActivity(txnsRes.data ?? [], accountsRes.data ?? [], categoriesRes.data ?? []);
+  // A hidden account isn't reconciled, so it (and its history) drop out here too.
+  const { accounts: visAccts, txns, hiddenIds } = visibleLedger(accountsRes.data ?? [], txnsRes.data ?? []);
+  const activity = accountActivity(txns, visAccts, categoriesRes.data ?? []);
   const accounts = activity.map((a) => ({
     id: a.account.id,
     name: a.account.name,
@@ -24,7 +26,7 @@ export default async function ReconcilePage() {
     balance: a.balance,
     reconciledThrough: a.account.reconciled_through,
   }));
-  const history = (historyRes.data ?? []).map((r) => ({
+  const history = (historyRes.data ?? []).filter((r) => !hiddenIds.has(r.account_id)).map((r) => ({
     accountId: r.account_id,
     asOf: r.as_of_date,
     statementBalance: r.statement_balance,

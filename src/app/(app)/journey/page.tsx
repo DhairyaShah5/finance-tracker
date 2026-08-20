@@ -1,5 +1,5 @@
 import { requireUser } from "@/lib/queries";
-import { accountActivity } from "@/lib/calc";
+import { accountActivity, visibleLedger } from "@/lib/calc";
 import { buildJourney } from "@/lib/journey";
 import { todayISO } from "@/lib/format";
 import { PageHeader } from "@/components/page-header";
@@ -21,8 +21,9 @@ export default async function JourneyPage() {
     supabase.from("inflow_types").select("*").eq("user_id", user.id),
   ]);
 
-  const txns = txnsRes.data ?? [];
-  const accounts = accountsRes.data ?? [];
+  // Hidden accounts leave net worth and the whole journey - both the balance and
+  // the transactions behind it.
+  const { accounts, txns } = visibleLedger(accountsRes.data ?? [], txnsRes.data ?? []);
   const categories = categoriesRes.data ?? [];
   // Transfers the user excluded on the India page (money not tracked in any US
   // account, like a CD held outside the app) are left out of the debt math, so

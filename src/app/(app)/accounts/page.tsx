@@ -1,5 +1,5 @@
 import { requireUser } from "@/lib/queries";
-import { accountActivity } from "@/lib/calc";
+import { accountActivity, visibleLedger } from "@/lib/calc";
 import { AccountsView } from "./accounts-view";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +13,9 @@ export default async function AccountsPage() {
     supabase.from("categories").select("id, linked_account_id").eq("user_id", user.id),
   ]);
 
-  const activity = accountActivity(txnsRes.data ?? [], accountsRes.data ?? [], categoriesRes.data ?? []);
+  // Hidden accounts (and their transactions) drop out entirely.
+  const { accounts, txns } = visibleLedger(accountsRes.data ?? [], txnsRes.data ?? []);
+  const activity = accountActivity(txns, accounts, categoriesRes.data ?? []);
 
   return <AccountsView activity={activity} />;
 }
