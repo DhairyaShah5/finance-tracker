@@ -21,7 +21,7 @@ export default async function TransactionsPage() {
   // both ways so the toggle can flip the numbers to match what's shown.
   const allTxns = txnsRes.data ?? [];
   const allAccounts = accountsRes.data ?? [];
-  const { accounts: visAccts, txns: visTxns, hiddenIds } = visibleLedger(allAccounts, allTxns);
+  const { accounts: visAccts, txns: visTxns, hiddenIds } = visibleLedger(allAccounts, allTxns, categoriesRes.data ?? []);
 
   // How often each category is used, so the Add-transaction picker can lead with
   // the ones logged most (Eating Out, Groceries, ...).

@@ -17,7 +17,7 @@ export default async function ReconcilePage() {
       .order("as_of_date", { ascending: false }),
   ]);
   // A hidden account isn't reconciled, so it (and its history) drop out here too.
-  const { accounts: visAccts, txns, hiddenIds } = visibleLedger(accountsRes.data ?? [], txnsRes.data ?? []);
+  const { accounts: visAccts, txns, hiddenIds } = visibleLedger(accountsRes.data ?? [], txnsRes.data ?? [], categoriesRes.data ?? []);
   const activity = accountActivity(txns, visAccts, categoriesRes.data ?? []);
   const accounts = activity.map((a) => ({
     id: a.account.id,

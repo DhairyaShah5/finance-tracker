@@ -34,13 +34,30 @@ export function signed(t: Pick<TransactionRow, "direction" | "amount">): number 
 export function visibleLedger<A extends { id: string; hidden?: boolean | null }>(
   accounts: A[],
   txns: TransactionRow[],
+  categories?: Pick<CategoryRow, "id" | "linked_account_id">[],
 ): { accounts: A[]; txns: TransactionRow[]; hiddenIds: Set<string> } {
   const hiddenIds = new Set(accounts.filter((a) => a.hidden).map((a) => a.id));
-  return {
-    accounts: accounts.filter((a) => !a.hidden),
-    txns: hiddenIds.size ? txns.filter((t) => !hiddenIds.has(t.account_id)) : txns,
-    hiddenIds,
-  };
+  if (!hiddenIds.size) return { accounts, txns, hiddenIds };
+
+  // A category-linked outflow routed INTO a hidden account (e.g. a savings deposit
+  // to a hidden vault) is money leaving your visible accounts for one you no
+  // longer track. Treat it like a transfer out: it still lowers the source
+  // balance and net worth, but stops counting as savings/spending - otherwise a
+  // hidden savings account's balance would leave net worth while the deposits that
+  // built it kept inflating "total saved".
+  const hiddenLinkedCats = new Set(
+    (categories ?? []).filter((c) => c.linked_account_id && hiddenIds.has(c.linked_account_id)).map((c) => c.id),
+  );
+  const visible: TransactionRow[] = [];
+  for (const t of txns) {
+    if (hiddenIds.has(t.account_id)) continue; // rows physically on a hidden account
+    if (!t.is_transfer && t.direction === "outflow" && t.category_id && hiddenLinkedCats.has(t.category_id)) {
+      visible.push({ ...t, is_transfer: true }); // reclassify: routed into a hidden account
+    } else {
+      visible.push(t);
+    }
+  }
+  return { accounts: accounts.filter((a) => !a.hidden), txns: visible, hiddenIds };
 }
 
 /**

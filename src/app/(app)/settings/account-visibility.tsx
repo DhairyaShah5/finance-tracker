@@ -28,7 +28,7 @@ export function AccountVisibility({ accounts }: { accounts: Acct[] }) {
       const res = await setAccountHidden(a.id, !show); // show === true → hidden = false
       setBusyId(null);
       if (!res.ok) return void toast.error(res.error ?? "Could not update.");
-      toast.success(show ? `${a.name} is shown again.` : `${a.name} is hidden from the app.`);
+      toast.success(show ? `${a.name} is included again.` : `${a.name} is no longer included.`);
       router.refresh();
     });
   }
@@ -36,11 +36,11 @@ export function AccountVisibility({ accounts }: { accounts: Acct[] }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Displayed accounts</CardTitle>
+        <CardTitle className="text-base">Accounts included in the app</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Turn an account off to hide it everywhere in the app: its balance leaves your net worth and its
+          Turn an account off to leave it out of the app: its balance leaves your net worth and its
           transactions drop out of every total. The transactions themselves stay in your ledger, and the
-          Transactions page can show them again on demand.
+          Transactions page can bring them back on demand.
         </p>
       </CardHeader>
       <CardContent className="space-y-1.5">
@@ -58,7 +58,7 @@ export function AccountVisibility({ accounts }: { accounts: Acct[] }) {
                   <span>{a.bank}</span>
                   <span>·</span>
                   <Money value={a.balance} cents colored={a.isCredit} className="tnum" />
-                  {a.hidden ? <span>· hidden</span> : null}
+                  {a.hidden ? <span>· not included</span> : null}
                 </p>
               </div>
               <Switch
@@ -73,7 +73,7 @@ export function AccountVisibility({ accounts }: { accounts: Acct[] }) {
         {hiddenCount > 0 ? (
           <p className="pt-1 text-xs text-muted-foreground">
             <EyeOff className="mr-1 inline size-3" />
-            {hiddenCount} account{hiddenCount === 1 ? "" : "s"} hidden. Every number across the app leaves{" "}
+            {hiddenCount} account{hiddenCount === 1 ? "" : "s"} not included. Every number across the app leaves{" "}
             {hiddenCount === 1 ? "it" : "them"} out.
           </p>
         ) : null}

@@ -440,10 +440,10 @@ export function TransactionsView({
             variant="outline"
             onClick={() => setShowHidden((v) => !v)}
             className="w-full gap-1.5 border-transparent bg-background/60 sm:w-auto"
-            title={showHidden ? "Hide the accounts you've turned off in Settings" : "Temporarily show the accounts you've hidden in Settings"}
+            title={showHidden ? "Show only the accounts included in the app" : "Also show accounts you've left out of the app"}
           >
             {showHidden ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-            {showHidden ? "Hide hidden" : "Show hidden"}
+            {showHidden ? "Included only" : "Show all accounts"}
           </Button>
         ) : null}
         <Button onClick={onAdd} className="w-full gap-1.5 sm:w-auto">

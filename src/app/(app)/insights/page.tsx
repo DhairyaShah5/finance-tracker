@@ -22,7 +22,7 @@ export default async function InsightsPage() {
     supabase.from("accounts").select("*").eq("user_id", user.id),
   ]);
   // Transactions on hidden accounts are excluded from every insight.
-  const { txns } = visibleLedger(accountsRes.data ?? [], txnsRes.data ?? []);
+  const { txns } = visibleLedger(accountsRes.data ?? [], txnsRes.data ?? [], categoriesRes.data ?? []);
   const categories = categoriesRes.data ?? [];
   const catById = new Map(categories.map((c) => [c.id, c]));
 

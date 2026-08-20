@@ -23,7 +23,7 @@ export default async function JourneyPage() {
 
   // Hidden accounts leave net worth and the whole journey - both the balance and
   // the transactions behind it.
-  const { accounts, txns } = visibleLedger(accountsRes.data ?? [], txnsRes.data ?? []);
+  const { accounts, txns } = visibleLedger(accountsRes.data ?? [], txnsRes.data ?? [], categoriesRes.data ?? []);
   const categories = categoriesRes.data ?? [];
   // Transfers the user excluded on the India page (money not tracked in any US
   // account, like a CD held outside the app) are left out of the debt math, so

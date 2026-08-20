@@ -16,7 +16,7 @@ export default async function BudgetPage() {
     supabase.from("accounts").select("*").eq("user_id", user.id),
   ]);
   // Transactions on hidden accounts are excluded from every budget figure.
-  const { txns } = visibleLedger(accountsRes.data ?? [], txnsRes.data ?? []);
+  const { txns } = visibleLedger(accountsRes.data ?? [], txnsRes.data ?? [], catsRes.data ?? []);
   const categories = catsRes.data ?? [];
   const settings = settingsRes.data ?? { starting_funds: 0, budget_months: 12, savings_target: 0 };
 

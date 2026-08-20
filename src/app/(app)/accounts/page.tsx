@@ -14,7 +14,7 @@ export default async function AccountsPage() {
   ]);
 
   // Hidden accounts (and their transactions) drop out entirely.
-  const { accounts, txns } = visibleLedger(accountsRes.data ?? [], txnsRes.data ?? []);
+  const { accounts, txns } = visibleLedger(accountsRes.data ?? [], txnsRes.data ?? [], categoriesRes.data ?? []);
   const activity = accountActivity(txns, accounts, categoriesRes.data ?? []);
 
   return <AccountsView activity={activity} />;

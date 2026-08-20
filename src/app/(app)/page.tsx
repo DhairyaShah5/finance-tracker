@@ -52,7 +52,7 @@ export default async function DashboardPage() {
   const settings = settingsRes.data ?? { starting_funds: 0, budget_months: 12, savings_target: 0 };
   // Hidden accounts vanish from every number here - drop them and their
   // transactions before anything is derived (their rows stay in the ledger).
-  const { accounts, txns } = visibleLedger(accountsRes.data ?? [], txnsRes.data ?? []);
+  const { accounts, txns } = visibleLedger(accountsRes.data ?? [], txnsRes.data ?? [], categoriesRes.data ?? []);
   const categories = categoriesRes.data ?? [];
   const debtors = debtorsRes.data ?? [];
   const creditors = creditorsRes.data ?? [];

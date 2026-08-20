@@ -17,7 +17,7 @@ export default async function PeoplePage() {
 
   // Hidden accounts drop out: money fronted or borrowed on one no longer counts,
   // and the account isn't offered when settling up.
-  const { accounts, txns } = visibleLedger(accountsRes.data ?? [], txnsRes.data ?? []);
+  const { accounts, txns } = visibleLedger(accountsRes.data ?? [], txnsRes.data ?? [], categoriesRes.data ?? []);
 
   // Balances are derived from the ledger, largest first (matching the old order).
   const debtors = debtorBalances(txns, debtorsRes.data ?? []).sort((a, b) => b.outstanding - a.outstanding);
