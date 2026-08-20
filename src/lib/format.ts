@@ -79,6 +79,28 @@ export function monthLabel(key: string): string {
   return format(parseISO(`${key}-01`), "MMM yyyy");
 }
 
+/**
+ * Short x-axis labels for a chronological run of month keys ('YYYY-MM'). A month
+ * shows just its name ("Aug") unless a 2-digit year is needed to tell it apart:
+ * the first point, a year rollover, or a month that appears more than once in the
+ * window (e.g. the two Augusts of a rolling 13-month range). Keeps a chart from
+ * showing two identical bare "Aug" ticks that read as a glitch.
+ */
+export function monthAxisLabels(keys: string[]): string[] {
+  const monthCount = new Map<string, number>();
+  for (const k of keys) {
+    const mon = monthLabel(k).split(" ")[0];
+    monthCount.set(mon, (monthCount.get(mon) ?? 0) + 1);
+  }
+  let prevYear = "";
+  return keys.map((k, i) => {
+    const [mon, year] = monthLabel(k).split(" ");
+    const needYear = i === 0 || year !== prevYear || (monthCount.get(mon) ?? 0) > 1;
+    prevYear = year;
+    return needYear ? `${mon} ’${year.slice(2)}` : mon;
+  });
+}
+
 /** Consistent chart color from a stored category hue. */
 export function hueColor(hue: number | null | undefined, lightness = 0.62, chroma = 0.13): string {
   const h = hue ?? 250;

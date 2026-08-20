@@ -47,9 +47,12 @@ export function ChartTooltip({
   total?: number;
 }) {
   if (!active || !payload?.length) return null;
+  // Prefer the point's full label (e.g. "Aug 2026") so a bare axis tick like
+  // "Aug" never leaves you guessing which year you're hovering.
+  const header = (payload[0]?.payload?.fullLabel as string | undefined) ?? label;
   return (
     <div className="min-w-36 rounded-xl border border-border/70 bg-popover/85 px-3 py-2 text-xs shadow-xl backdrop-blur-md">
-      {label ? <p className="mb-1.5 font-semibold">{label}</p> : null}
+      {header ? <p className="mb-1.5 font-semibold">{header}</p> : null}
       <div className="flex flex-col gap-1">
         {payload.map((p, i) => {
           const v = Number(p.value);

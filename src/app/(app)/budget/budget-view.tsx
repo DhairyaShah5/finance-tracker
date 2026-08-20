@@ -18,7 +18,7 @@ import { Reveal } from "@/components/reveal";
 import { BarSeriesChart, TrendChart } from "@/components/charts";
 import { DonutBreakdown } from "@/components/donut-breakdown";
 import { cn } from "@/lib/utils";
-import { hueColor, fmtMoney } from "@/lib/format";
+import { hueColor, fmtMoney, monthAxisLabels } from "@/lib/format";
 import type { BudgetStatus } from "@/lib/calc";
 
 function barColor(pct: number): string {
@@ -99,8 +99,10 @@ export function BudgetView({
     .filter((c) => c.budget > 0 || c.spent > 0)
     .slice(0, 7)
     .map((c) => ({ label: c.name.split(" ")[0], Budget: c.budget, Spent: c.spent }));
-  const monthly = statuses.map((s) => ({
-    label: s.label.split(" ")[0],
+  const monthlyAxis = monthAxisLabels(statuses.map((s) => s.month));
+  const monthly = statuses.map((s, i) => ({
+    label: monthlyAxis[i],
+    fullLabel: s.label,
     Income: earnedByMonth[s.month] ?? 0,
     Budget: s.totalBudget,
     Spent: s.totalSpent,

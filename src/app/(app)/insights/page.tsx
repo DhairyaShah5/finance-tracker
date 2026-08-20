@@ -1,6 +1,6 @@
 import { requireUser } from "@/lib/queries";
 import { budgetGroupsByMonth, incomeByMonth, myAmount } from "@/lib/calc";
-import { fmtMoney, fmtPct, monthKey } from "@/lib/format";
+import { fmtMoney, fmtPct, monthKey, monthAxisLabels } from "@/lib/format";
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
 import { Money } from "@/components/money";
@@ -62,8 +62,10 @@ export default async function InsightsPage() {
   const totalIncome = Object.values(income).reduce((s, v) => s + v, 0);
   const avgSpend = months.length ? (totals.needs + totals.wants + totals.unclassified) / months.length : 0;
 
-  const chartData = months.map((m) => ({
-    label: m.label.split(" ")[0],
+  const chartAxis = monthAxisLabels(months.map((m) => m.month));
+  const chartData = months.map((m, i) => ({
+    label: chartAxis[i],
+    fullLabel: m.label,
     Needs: m.needs,
     Wants: m.wants,
     Savings: m.savings,

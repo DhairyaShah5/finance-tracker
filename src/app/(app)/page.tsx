@@ -18,7 +18,7 @@ import {
   sumOwedByMe,
   signed,
 } from "@/lib/calc";
-import { fmtMoney, fmtDate, hueColor, monthKey, monthLabel } from "@/lib/format";
+import { fmtMoney, fmtDate, hueColor, monthKey, monthLabel, monthAxisLabels } from "@/lib/format";
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
 import { IncomeCard, type IncomeSource } from "@/components/income-card";
@@ -134,8 +134,12 @@ export default async function DashboardPage() {
   // Chart series - the exact monthly closing balances, so the line always matches
   // the month table. The first tracked month is the starting point (no separate
   // "Start" node - the arrival month already carries the opening capital).
-  const balanceSeries = balancesByMonth.map((b) => ({
-    label: b.label.split(" ")[0],
+  // Axis labels disambiguate a rolling window that spans two years (so it never
+  // shows two bare "Aug" ticks); the tooltip carries the full "Aug 2026".
+  const balanceAxis = monthAxisLabels(balancesByMonth.map((b) => b.key));
+  const balanceSeries = balancesByMonth.map((b, i) => ({
+    label: balanceAxis[i],
+    fullLabel: b.label,
     balance: b.closing,
   }));
   // Budget bar chart uses the same income-anchored engine as the Budget page,
@@ -153,15 +157,19 @@ export default async function DashboardPage() {
       runwayFloor,
     ),
   );
-  const budgetSeries = budgetStatuses.map((s) => ({
-    label: s.label.split(" ")[0],
+  const budgetAxis = monthAxisLabels(budgetMonths);
+  const budgetSeries = budgetStatuses.map((s, i) => ({
+    label: budgetAxis[i],
+    fullLabel: s.label,
     Spent: s.totalSpent,
     Budget: s.totalBudget,
   }));
   // Monthly surplus / deficit: earned income − living expenses − investments.
   // Arrival capital excluded (one-time starting funds), so the bars read as
   // "did this month's income cover what I spent and set aside?"
-  const cashFlow = monthlyCashFlow(txns).map((m) => ({ ...m, label: m.label.split(" ")[0] }));
+  const cashFlowRaw = monthlyCashFlow(txns);
+  const cashAxis = monthAxisLabels(cashFlowRaw.map((m) => m.month));
+  const cashFlow = cashFlowRaw.map((m, i) => ({ ...m, label: cashAxis[i], fullLabel: m.label }));
   const surplusMonths = cashFlow.filter((m) => m.net >= 0).length;
   // Spending donut: every category expanded (no "Other" bucket). Refunds are
   // netted into their category, so the donut total, the "Total spent" KPI

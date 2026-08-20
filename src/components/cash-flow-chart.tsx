@@ -47,11 +47,11 @@ function Row({ label, value, sign }: { label: string; value: number; sign?: "+" 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Recharts tooltip payload is untyped
 function CashFlowTooltip({ active, payload }: any) {
   if (!active || !payload?.length) return null;
-  const d = payload[0].payload as MonthlyCashFlow;
+  const d = payload[0].payload as MonthlyCashFlow & { fullLabel?: string };
   const surplus = d.net >= 0;
   return (
     <div className="min-w-52 rounded-xl border border-border/70 bg-popover/85 px-3 py-2 text-xs shadow-xl backdrop-blur-md">
-      <p className="mb-1.5 font-semibold">{d.label}</p>
+      <p className="mb-1.5 font-semibold">{d.fullLabel ?? d.label}</p>
       <div className="flex flex-col gap-1">
         <Row label="Income" value={d.income} sign="+" />
         <Row label="Living expenses" value={d.expenses} sign="−" />
