@@ -27,7 +27,6 @@ import { Money } from "@/components/money";
 import { CountUp } from "@/components/count-up";
 import { Reveal } from "@/components/reveal";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { TrendChart, BarSeriesChart } from "@/components/charts";
 import { DonutBreakdown } from "@/components/donut-breakdown";
 import { SpendingTreemap, type TreemapCat } from "@/components/spending-treemap";
@@ -456,11 +455,6 @@ export default async function DashboardPage() {
                       </div>
                       <div className="text-right">
                         <Money value={bal} cents colored={account.is_credit} className="text-sm font-medium" />
-                        {account.is_credit ? (
-                          <Badge variant="outline" className="ml-1 text-[10px]">
-                            credit
-                          </Badge>
-                        ) : null}
                       </div>
                     </div>
                   ))}
