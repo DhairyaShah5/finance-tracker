@@ -114,7 +114,17 @@ export function TransactionsView({
     const q = search.trim().toLowerCase();
     return activeTxns
       .filter((t) => {
-        if (q && !t.description.toLowerCase().includes(q)) return false;
+        if (q) {
+          // Match the description OR the amount, so you can find a transaction by
+          // its number when you don't remember what you called it. A numeric query
+          // (ignoring $ , and spaces) is substring-matched against the raw amount
+          // and its 2-decimal form: "22", "22.04" and "1000" all hit 22.04 / 1000.
+          const qNum = q.replace(/[$,\s]/g, "");
+          const amountHit =
+            /^[0-9]+\.?[0-9]*$/.test(qNum) &&
+            (String(t.amount).includes(qNum) || t.amount.toFixed(2).includes(qNum));
+          if (!t.description.toLowerCase().includes(q) && !amountHit) return false;
+        }
         if (account !== "all" && t.account_id !== account) return false;
         if (category !== "all" && t.category_id !== category) return false;
         if (direction !== "all") {
@@ -402,7 +412,7 @@ export function TransactionsView({
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search description…"
+            placeholder="Search description or amount…"
             className="border-transparent bg-background/60 pl-8"
           />
         </div>
