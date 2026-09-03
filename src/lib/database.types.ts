@@ -189,6 +189,28 @@ export interface Database {
         Update: Partial<Database["public"]["Tables"]["creditors"]["Insert"]>;
         Relationships: [];
       };
+      transaction_debtors: {
+        Row: {
+          id: string;
+          user_id: string;
+          transaction_id: string;
+          debtor_id: string;
+          share: number;
+          settled_amount: number;
+        } & Timestamps & WithUpdated;
+        Insert: {
+          id?: string;
+          user_id: string;
+          transaction_id: string;
+          debtor_id: string;
+          share?: number;
+          settled_amount?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["transaction_debtors"]["Insert"]>;
+        Relationships: [];
+      };
       transactions: {
         Row: {
           id: string;
@@ -310,6 +332,7 @@ export type CategoryRow = T["categories"]["Row"];
 export type InflowTypeRow = T["inflow_types"]["Row"];
 export type DebtorRow = T["debtors"]["Row"];
 export type CreditorRow = T["creditors"]["Row"];
+export type TransactionDebtorRow = T["transaction_debtors"]["Row"];
 export type TransactionRow = T["transactions"]["Row"];
 export type IndiaTransferRow = T["india_transfers"]["Row"];
 export type OtherIncomeRow = T["other_income"]["Row"];

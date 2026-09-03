@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
+import { Plus, X } from "lucide-react";
 import type {
   AccountRow,
   CategoryRow,
@@ -32,13 +33,16 @@ import type {
   TransactionRow,
 } from "@/lib/database.types";
 import { WHOSE_EXPENSE_VALUES } from "@/lib/defaults";
+import { splitShares } from "@/lib/calc";
 import { fmtMoney, hueColor, todayISO } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { createTransaction, updateTransaction, type TransactionInput } from "./actions";
 
 const NONE = "__none__";
-const NEW_DEBTOR = "__new_debtor__";
 const today = todayISO;
+
+/** One person sharing an expense: an existing debtor (`id`) or a new name. */
+type PersonPick = { key: string; id: string | null; name: string; share: string };
 
 type Mode = "expense" | "income" | "transfer";
 
@@ -84,6 +88,60 @@ function ChipRow({ children }: { children: React.ReactNode }) {
   return <div className="flex flex-wrap gap-2">{children}</div>;
 }
 
+/**
+ * One line of a split: a name and the amount that person owes. The field shows
+ * the even share as its placeholder; typing a number fixes (overrides) it.
+ */
+function ShareRow({
+  label,
+  you,
+  value,
+  computed,
+  onChange,
+  onRemove,
+}: {
+  label: string;
+  you?: boolean;
+  value: string;
+  computed: number;
+  onChange: (v: string) => void;
+  onRemove?: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className={cn("min-w-0 flex-1 truncate text-sm", you && "font-medium")}>
+        {label}
+        {you ? " (you)" : ""}
+      </span>
+      <Input
+        type="number"
+        min="0"
+        step="0.01"
+        inputMode="decimal"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={fmtMoney(computed, { cents: true })}
+        className="w-28 text-right tnum"
+        aria-label={`${label} share`}
+      />
+      {onRemove ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-7 shrink-0 text-muted-foreground"
+          onClick={onRemove}
+          aria-label={`Remove ${label}`}
+        >
+          <X className="size-4" />
+        </Button>
+      ) : (
+        <span className="w-7 shrink-0" aria-hidden />
+      )}
+    </div>
+  );
+}
+
 export interface TxnLookups {
   accounts: AccountRow[];
   categories: CategoryRow[];
@@ -98,11 +156,14 @@ export function TransactionDialog({
   onOpenChange,
   lookups,
   existing,
+  existingPeople,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   lookups: TxnLookups;
   existing?: TransactionRow | null;
+  /** Participants of an existing split, so editing pre-fills the picker. */
+  existingPeople?: { debtor_id: string; share: number }[] | null;
 }) {
   const router = useRouter();
   const [pending, start] = React.useTransition();
@@ -125,8 +186,10 @@ export function TransactionDialog({
   const [whose, setWhose] = React.useState<string>("My");
   const [splitCount, setSplitCount] = React.useState("2");
   const [myShare, setMyShare] = React.useState(""); // explicit "your share" override
-  const [debtorId, setDebtorId] = React.useState(NONE);
-  const [debtorName, setDebtorName] = React.useState(""); // for a new person typed inline
+  // People sharing this expense (Friend / Group / Roommates). Empty = no one
+  // named: Friend needs at least one; Group/Roommates fall back to a plain count.
+  const [people, setPeople] = React.useState<PersonPick[]>([]);
+  const [newPerson, setNewPerson] = React.useState("");
   const [reimbursable, setReimbursable] = React.useState(false);
   // An income entry that is really returned spend (a refund / money back). It
   // nets against a category instead of counting as income.
@@ -171,9 +234,27 @@ export function TransactionDialog({
       setInflowTypeId(existing.inflow_type_id ?? NONE);
       setWhose(existing.whose_expense ?? "My");
       setSplitCount(existing.split_count ? String(existing.split_count) : "2");
-      setMyShare(existing.my_share != null ? String(existing.my_share) : "");
-      setDebtorId(existing.debtor_id ?? NONE);
-      setDebtorName("");
+      // Pre-fill the split. If it was an even split, leave the amounts blank so it
+      // stays even (and re-evens if you change the total); if it was uneven, fill
+      // each stored slice as an explicit amount so the exact split is preserved.
+      const ep = existingPeople ?? [];
+      const isFriendTxn = existing.whose_expense === "Friend";
+      const partyCount = ep.length + (isFriendTxn ? 0 : 1);
+      const evenEach = partyCount > 0 ? existing.amount / partyCount : 0;
+      const wasEven =
+        ep.length > 0 &&
+        (isFriendTxn || Math.abs((existing.my_share ?? 0) - evenEach) < 0.01) &&
+        ep.every((p) => Math.abs(p.share - evenEach) < 0.01);
+      setMyShare(ep.length > 0 && wasEven ? "" : existing.my_share != null ? String(existing.my_share) : "");
+      setPeople(
+        ep.map((p) => ({
+          key: p.debtor_id,
+          id: p.debtor_id,
+          name: lookups.debtors.find((d) => d.id === p.debtor_id)?.name ?? "Someone",
+          share: wasEven ? "" : String(p.share),
+        })),
+      );
+      setNewPerson("");
       setReimbursable(existing.reimbursable ?? false);
       // A non-transfer inflow carrying a category is a refund / return.
       setIsRefund(existing.direction === "inflow" && !existing.is_transfer && existing.category_id != null);
@@ -194,13 +275,13 @@ export function TransactionDialog({
       setWhose("My");
       setSplitCount("2");
       setMyShare("");
-      setDebtorId(NONE);
-      setDebtorName("");
+      setPeople([]);
+      setNewPerson("");
       setReimbursable(false);
       setIsRefund(false);
       setNotes("");
     }
-  }, [open, existing, lookups.accounts]);
+  }, [open, existing, existingPeople, lookups.accounts, lookups.debtors]);
 
   // Tapping a category also fills in its Needs/Wants/Savings group when you
   // haven't set one yet - one less pick for the common case. Never overrides an
@@ -269,6 +350,47 @@ export function TransactionDialog({
     </ChipRow>
   );
 
+  // ----- Split across people (Friend / Group / Roommates) -----
+  const friendMode = mode === "expense" && whose === "Friend";
+  const hasPeople = people.length > 0;
+  // Group/Roommates with nobody named falls back to the plain count + toggle.
+  const groupNoPeople = (whose === "Group" || whose === "Roommates") && !hasPeople;
+  const overrideOf = (s: string) => (s.trim() === "" ? null : Math.max(0, Number(s) || 0));
+
+  function addPerson(p: { id: string | null; name: string }) {
+    const name = p.name.trim();
+    if (!name) return;
+    const key = p.id ?? `new:${name.toLowerCase()}`;
+    setPeople((prev) => (prev.some((x) => x.key === key) ? prev : [...prev, { key, id: p.id, name, share: "" }]));
+  }
+  function removePerson(key: string) {
+    setPeople((prev) => prev.filter((p) => p.key !== key));
+  }
+  function setPersonShare(key: string, share: string) {
+    setPeople((prev) => prev.map((p) => (p.key === key ? { ...p, share } : p)));
+  }
+  function commitNewPerson() {
+    const name = newPerson.trim();
+    if (!name) return;
+    // Typing a name that already exists just adds that debtor, not a duplicate.
+    const match = lookups.debtors.find((d) => d.name.trim().toLowerCase() === name.toLowerCase());
+    addPerson(match ? { id: match.id, name: match.name } : { id: null, name });
+    setNewPerson("");
+  }
+
+  // Debtors not already in the split, offered as one-tap chips.
+  const availableDebtors = lookups.debtors.filter((d) => !people.some((p) => p.id === d.id));
+
+  // Live share breakdown: even by default, honoring any per-person override, and
+  // always reconciling to the amount (mirrors the server's splitShares).
+  const amountNum = Number(amount) || 0;
+  const partyOverrides = friendMode
+    ? people.map((p) => overrideOf(p.share))
+    : [overrideOf(myShare), ...people.map((p) => overrideOf(p.share))];
+  const shares = hasPeople ? splitShares(amountNum, partyOverrides) : [];
+  const myComputed = friendMode ? 0 : shares[0] ?? 0;
+  const personComputed = friendMode ? shares : shares.slice(1);
+
   function submit() {
     const direction = mode === "transfer" ? transferDir : mode === "income" ? "inflow" : "outflow";
     const refund = mode === "income" && isRefund;
@@ -289,13 +411,16 @@ export function TransactionDialog({
       toast.error("Pick the category this refund came from.");
       return;
     }
-    // A Friend expense must land under a person on Debtors.
-    const pickedDebtor = debtorId !== NONE && debtorId !== NEW_DEBTOR;
-    const newDebtor = debtorId === NEW_DEBTOR && debtorName.trim() !== "";
-    if (isFriend && !pickedDebtor && !newDebtor) {
-      toast.error("Pick who owes you, or add a new person.");
+    // A Friend expense is fronted entirely for other people, so it must name at
+    // least one. Group / Roommates can name people too, or fall back to a count.
+    if (isFriend && !hasPeople) {
+      toast.error("Add at least one person you fronted this for.");
       return;
     }
+    const splitPeople = mode === "expense" && whose !== "My" && hasPeople;
+    const peoplePayload = splitPeople
+      ? people.map((p) => ({ id: p.id, name: p.id ? null : p.name, share: overrideOf(p.share) }))
+      : undefined;
     const input: TransactionInput = {
       txn_date: date,
       account_id: accountId,
@@ -306,18 +431,30 @@ export function TransactionDialog({
       amount,
       inflow_type_id: mode === "income" && !refund && inflowTypeId !== NONE ? inflowTypeId : null,
       whose_expense: whose as TransactionInput["whose_expense"],
+      // With named people the server derives the count; only the plain fallback
+      // (Group/Roommates, no one named) still carries a hand-entered split_count.
       split_count:
-        mode === "expense" && (whose === "Group" || whose === "Roommates")
+        mode === "expense" && (whose === "Group" || whose === "Roommates") && !hasPeople
           ? Number(splitCount) || null
           : null,
-      my_share: mode === "expense" && myShare.trim() !== "" ? Number(myShare) : null,
+      my_share:
+        mode !== "expense"
+          ? null
+          : splitPeople
+            ? isFriend
+              ? null // Friend: your share is 0, the server sets it
+              : overrideOf(myShare) // your slice of the split (null = even)
+            : myShare.trim() !== ""
+              ? Number(myShare)
+              : null,
       budget_group:
         mode === "expense" && budgetGroup !== NONE
           ? (budgetGroup as TransactionInput["budget_group"])
           : null,
-      debtor_id: pickedDebtor ? debtorId : null,
-      debtor_name: newDebtor ? debtorName.trim() : null,
-      // Friend = fronted entirely for someone, so it's always a receivable.
+      people: peoplePayload,
+      // Friend = fronted entirely for someone, so it's always a receivable. A
+      // named split is a receivable too (the server forces it); the toggle only
+      // matters for a plain expense with no one named.
       reimbursable: mode === "expense" ? isFriend || reimbursable : false,
       notes: notes || null,
       is_transfer: mode === "transfer",
@@ -505,8 +642,10 @@ export function TransactionDialog({
                       selected={whose === w}
                       onClick={() => {
                         setWhose(w);
-                        if (w === "My") setDebtorId(NONE);
-                        else if (w !== "Friend" && debtorId === NEW_DEBTOR) setDebtorId(NONE);
+                        if (w === "My") {
+                          setPeople([]);
+                          setNewPerson("");
+                        }
                       }}
                     >
                       {w}
@@ -515,46 +654,117 @@ export function TransactionDialog({
                 </ChipRow>
               </div>
 
+              {/* Split across people: pick existing debtors or add new ones inline,
+                  then set each share (even by default, override per person). */}
               {whose !== "My" ? (
-                <div className="space-y-1.5">
-                  <Label>{whose === "Friend" ? "Who owes you?" : "Debtor"}</Label>
-                  <Select value={debtorId} onValueChange={setDebtorId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder={whose === "Friend" ? "Pick or add" : "Optional"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {whose !== "Friend" ? <SelectItem value={NONE}>Unassigned</SelectItem> : null}
-                      {lookups.debtors.map((d) => (
-                        <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                      ))}
-                      {whose === "Friend" ? (
-                        <SelectItem value={NEW_DEBTOR}>+ New person…</SelectItem>
+                <div className="space-y-3 rounded-lg border border-border bg-secondary/40 p-3">
+                  <div className="space-y-2">
+                    <Label>{whose === "Friend" ? "Who did you pay for?" : "Who are you splitting with?"}</Label>
+                    {availableDebtors.length ? (
+                      <ChipRow>
+                        {availableDebtors.map((d) => (
+                          <Chip key={d.id} selected={false} onClick={() => addPerson({ id: d.id, name: d.name })}>
+                            <Plus className="size-3 shrink-0" />
+                            {d.name}
+                          </Chip>
+                        ))}
+                      </ChipRow>
+                    ) : null}
+                    <div className="flex gap-2">
+                      <Input
+                        value={newPerson}
+                        onChange={(e) => setNewPerson(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            commitNewPerson();
+                          }
+                        }}
+                        placeholder="Add someone new…"
+                        autoComplete="off"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={commitNewPerson}
+                        disabled={!newPerson.trim()}
+                        aria-label="Add person"
+                        className="shrink-0"
+                      >
+                        <Plus className="size-4" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  {hasPeople ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>{whose === "Friend" ? "Split across them" : "Split, you included"}</span>
+                        <span className="tnum">{fmtMoney(amountNum, { cents: true })} total</span>
+                      </div>
+                      {whose !== "Friend" ? (
+                        <ShareRow label="You" you value={myShare} computed={myComputed} onChange={setMyShare} />
                       ) : null}
-                    </SelectContent>
-                  </Select>
+                      {people.map((p, i) => (
+                        <ShareRow
+                          key={p.key}
+                          label={p.name}
+                          value={p.share}
+                          computed={personComputed[i] ?? 0}
+                          onChange={(v) => setPersonShare(p.key, v)}
+                          onRemove={() => removePerson(p.key)}
+                        />
+                      ))}
+                      <p className="text-xs text-muted-foreground">
+                        Even share by default; type a number on any row to fix that person&apos;s amount and
+                        the rest re-split evenly.{" "}
+                        {whose === "Friend"
+                          ? "You owe nothing here; it's all owed back to you."
+                          : "Your row is what counts as your spending; the others are owed back to you."}
+                      </p>
+                    </div>
+                  ) : whose === "Friend" ? (
+                    <p className="text-xs text-muted-foreground">
+                      Add the people you fronted this for. It isn&apos;t your spending - it&apos;s tracked as
+                      owed back and shows under each person on People until they pay you.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Add people to track who owes you, or just set the split below.
+                    </p>
+                  )}
                 </div>
               ) : null}
 
-              {whose === "Friend" && debtorId === NEW_DEBTOR ? (
-                <div className="space-y-1.5">
-                  <Label htmlFor="debtor-name">New person&apos;s name</Label>
-                  <Input
-                    id="debtor-name"
-                    value={debtorName}
-                    onChange={(e) => setDebtorName(e.target.value)}
-                    placeholder="e.g. Vivek"
-                    autoComplete="off"
-                  />
+              {/* Plain split by count (Group/Roommates, no one named) or a "My"
+                  expense someone will reimburse - both keep the manual toggle. */}
+              {groupNoPeople ? (
+                <div className="grid grid-cols-2 items-end gap-3 rounded-lg border border-border bg-secondary/40 p-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="split">Split between (incl. you)</Label>
+                    <Input
+                      id="split"
+                      type="number"
+                      min="1"
+                      step="1"
+                      inputMode="numeric"
+                      value={splitCount}
+                      onChange={(e) => setSplitCount(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="text-xs text-muted-foreground">Your share</p>
+                    <p className="text-lg font-semibold tnum">
+                      {Number(splitCount) > 0 && amountNum > 0
+                        ? fmtMoney(amountNum / Number(splitCount), { cents: true })
+                        : "-"}
+                    </p>
+                  </div>
                 </div>
               ) : null}
 
-              {whose === "Friend" ? (
-                <p className="rounded-lg border border-border bg-secondary/40 px-3 py-2.5 text-xs text-muted-foreground">
-                  Fronted entirely for someone else, so it isn&apos;t your spending — no category
-                  needed. It&apos;s tracked as owed back and shows under this person on Debtors until
-                  they pay you back.
-                </p>
-              ) : (
+              {whose === "My" || groupNoPeople ? (
                 <div className="flex items-start justify-between gap-3 rounded-lg border border-border bg-secondary/40 p-3">
                   <div className="space-y-0.5">
                     <Label htmlFor="reimbursable">Reimbursable</Label>
@@ -577,50 +787,27 @@ export function TransactionDialog({
                     disabled={(existing?.reimbursed_amount ?? 0) > 0}
                   />
                 </div>
-              )}
-
-              {whose === "Group" || whose === "Roommates" ? (
-                <div className="grid grid-cols-2 items-end gap-3 rounded-lg border border-border bg-secondary/40 p-3">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="split">Split between (incl. you)</Label>
-                    <Input
-                      id="split"
-                      type="number"
-                      min="1"
-                      step="1"
-                      inputMode="numeric"
-                      value={splitCount}
-                      onChange={(e) => setSplitCount(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-0.5">
-                    <p className="text-xs text-muted-foreground">Your share</p>
-                    <p className="text-lg font-semibold tnum">
-                      {Number(splitCount) > 0 && Number(amount) > 0
-                        ? fmtMoney(Number(amount) / Number(splitCount), { cents: true })
-                        : "-"}
-                    </p>
-                  </div>
-                </div>
               ) : null}
 
-              <div className="space-y-1.5">
-                <Label htmlFor="my_share">Your share (optional)</Label>
-                <Input
-                  id="my_share"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  inputMode="decimal"
-                  placeholder="Override how much counts as your spending"
-                  value={myShare}
-                  onChange={(e) => setMyShare(e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Leave blank to use the even split above. Set this when you actually covered more
-                  (or less) than your share. It changes your spending, not the amount paid.
-                </p>
-              </div>
+              {whose === "My" || groupNoPeople ? (
+                <div className="space-y-1.5">
+                  <Label htmlFor="my_share">Your share (optional)</Label>
+                  <Input
+                    id="my_share"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    inputMode="decimal"
+                    placeholder="Override how much counts as your spending"
+                    value={myShare}
+                    onChange={(e) => setMyShare(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Leave blank to use the even split above. Set this when you actually covered more
+                    (or less) than your share. It changes your spending, not the amount paid.
+                  </p>
+                </div>
+              ) : null}
             </>
           ) : null}
 

@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { myAmount } from "@/lib/calc";
+import { myAmount, splitShares } from "@/lib/calc";
 import type { Database } from "@/lib/database.types";
 
 type TxnInsert = Database["public"]["Tables"]["transactions"]["Insert"];
@@ -22,6 +22,21 @@ const schema = z.object({
   // A brand-new person's name, typed on a Friend expense - we create the debtor
   // and link it, so a Friend expense always lands under someone on Debtors.
   debtor_name: z.string().trim().nullable().optional(),
+  // Split across several people (Friend / Group / Roommates). Each entry is one
+  // person who owes you a slice of this bill: an existing debtor (`id`) or a new
+  // one typed inline (`name`, found-or-created). `share` fixes that person's
+  // amount; null means "take an even share of the rest". When present and
+  // non-empty this drives a transaction_debtors junction and supersedes the
+  // single `debtor_id` above.
+  people: z
+    .array(
+      z.object({
+        id: z.string().uuid().nullable().optional(),
+        name: z.string().trim().nullable().optional(),
+        share: z.coerce.number().min(0, "Share can't be negative.").nullable().optional(),
+      }),
+    )
+    .optional(),
   is_transfer: z.boolean().optional(),
   split_count: z.coerce.number().int().positive().nullable().optional(),
   my_share: z.coerce.number().min(0, "Share can't be negative.").nullable().optional(),
@@ -110,6 +125,86 @@ async function resolveDebtorId(
   return created?.id ?? null;
 }
 
+/** A split is only meaningful on a real (non-transfer) outflow shared with people. */
+function isSplitExpense(data: z.output<typeof schema>): boolean {
+  return (
+    !data.is_transfer &&
+    data.direction === "outflow" &&
+    (data.whose_expense === "Friend" ||
+      data.whose_expense === "Group" ||
+      data.whose_expense === "Roommates")
+  );
+}
+
+/**
+ * Turn the form's `people` list into resolved debtors (find-or-create each by
+ * name, or verify an existing id belongs to this user), keeping each person's
+ * `share` override. Deduped by debtor id. Empty unless this is a split expense.
+ */
+async function resolvePeople(
+  supabase: Awaited<ReturnType<typeof authed>>["supabase"],
+  userId: string,
+  data: z.output<typeof schema>,
+): Promise<{ debtorId: string; share: number | null }[]> {
+  if (!data.people || data.people.length === 0 || !isSplitExpense(data)) return [];
+  const out: { debtorId: string; share: number | null }[] = [];
+  const seen = new Set<string>();
+  for (const p of data.people) {
+    let id: string | null = p.id ?? null;
+    if (id) {
+      const { data: owned } = await supabase
+        .from("debtors")
+        .select("id")
+        .eq("id", id)
+        .eq("user_id", userId)
+        .maybeSingle();
+      id = owned?.id ?? null;
+    } else if (p.name?.trim()) {
+      const name = p.name.trim();
+      const { data: existing } = await supabase
+        .from("debtors")
+        .select("id")
+        .eq("user_id", userId)
+        .ilike("name", name)
+        .maybeSingle();
+      id = existing?.id ?? null;
+      if (!id) {
+        const { data: created } = await supabase
+          .from("debtors")
+          .insert({ user_id: userId, name, amount: 0 })
+          .select("id")
+          .single();
+        id = created?.id ?? null;
+      }
+    }
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push({ debtorId: id, share: p.share ?? null });
+  }
+  return out;
+}
+
+/**
+ * Split the bill across you + the people. Friend = fronted entirely, so your
+ * share is 0 and the whole amount splits across the people; Group/Roommates puts
+ * you in the split too (your override is the form's `my_share`). Even by default,
+ * with any per-person override honored; shares always reconcile to the cent.
+ */
+function computeSplit(
+  data: z.output<typeof schema>,
+  people: { debtorId: string; share: number | null }[],
+): { myShare: number; partyCount: number; rows: { debtor_id: string; share: number }[] } {
+  const isFriend = data.whose_expense === "Friend";
+  const overrides = isFriend
+    ? people.map((p) => p.share)
+    : [data.my_share ?? null, ...people.map((p) => p.share)];
+  const shares = splitShares(data.amount, overrides);
+  const myShare = isFriend ? 0 : shares[0];
+  const personShares = isFriend ? shares : shares.slice(1);
+  const rows = people.map((p, i) => ({ debtor_id: p.debtorId, share: personShares[i] ?? 0 }));
+  return { myShare: round2(myShare), partyCount: isFriend ? people.length : people.length + 1, rows };
+}
+
 async function authed() {
   const supabase = await createClient();
   const {
@@ -122,11 +217,53 @@ function revalidate() {
   for (const p of ["/transactions", "/", "/accounts", "/people", "/insights", "/budget"]) revalidatePath(p);
 }
 
+/** The transaction fields that a multi-person split overrides on top of normalize(). */
+function splitTxnFields(
+  data: z.output<typeof schema>,
+  myShare: number,
+  partyCount: number,
+) {
+  const isFriend = data.whose_expense === "Friend";
+  return {
+    debtor_id: null, // the junction owns the attribution now
+    my_share: myShare, // your slice - keeps myAmount() authoritative everywhere
+    reimbursable: true, // the others' slices are a receivable until they pay you
+    reimbursed: false,
+    reimbursed_amount: 0,
+    // Group/Roommates track how many ways it's split; Friend leaves it null.
+    split_count: isFriend ? null : partyCount,
+  };
+}
+
 export async function createTransaction(input: TransactionInput): Promise<ActionResult> {
   const parsed = schema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
   const { supabase, user } = await authed();
   if (!user) return { ok: false, error: "Not signed in." };
+
+  const people = await resolvePeople(supabase, user.id, parsed.data);
+
+  // Split across several people: write the expense, then one junction row each.
+  if (people.length > 0) {
+    const { myShare, partyCount, rows } = computeSplit(parsed.data, people);
+    const { data: created, error } = await supabase
+      .from("transactions")
+      .insert({ user_id: user.id, ...normalize(parsed.data), ...splitTxnFields(parsed.data, myShare, partyCount) })
+      .select("id")
+      .single();
+    if (error || !created) return { ok: false, error: error?.message ?? "Failed to save." };
+    const linkRows = rows.map((r) => ({
+      user_id: user.id,
+      transaction_id: created.id,
+      debtor_id: r.debtor_id,
+      share: r.share,
+      settled_amount: 0,
+    }));
+    const { error: lErr } = await supabase.from("transaction_debtors").insert(linkRows);
+    if (lErr) return { ok: false, error: lErr.message };
+    revalidate();
+    return { ok: true };
+  }
 
   const debtorId = await resolveDebtorId(supabase, user.id, parsed.data);
   const { error } = await supabase
@@ -143,10 +280,90 @@ export async function updateTransaction(id: string, input: TransactionInput): Pr
   const { supabase, user } = await authed();
   if (!user) return { ok: false, error: "Not signed in." };
 
+  const people = await resolvePeople(supabase, user.id, parsed.data);
+  const { data: existingLinks } = await supabase
+    .from("transaction_debtors")
+    .select("*")
+    .eq("transaction_id", id)
+    .eq("user_id", user.id);
+  const hadLinks = (existingLinks ?? []).length > 0;
+  // Any repayment already recorded against this split? Then its people/amount are
+  // locked (rewriting rows would silently drop the settled history and desync the
+  // receivable). Metadata-only edits are still fine as long as the split is unchanged.
+  const settled = (existingLinks ?? []).some((l) => (l.settled_amount ?? 0) > 0.005);
+
+  if (people.length > 0) {
+    const { myShare, partyCount, rows } = computeSplit(parsed.data, people);
+    if (settled) {
+      // Compare the incoming split to what's stored; block a real change, allow the rest.
+      const before = new Map((existingLinks ?? []).map((l) => [l.debtor_id, round2(l.share)]));
+      const same =
+        before.size === rows.length && rows.every((r) => Math.abs((before.get(r.debtor_id) ?? -1) - r.share) < 0.005);
+      if (!same) {
+        return {
+          ok: false,
+          error: "This split has repayments recorded. Delete the repayment(s) on the People page before changing who's involved or the amounts.",
+        };
+      }
+      // Unchanged split - update only the safe fields, leave the split & totals intact.
+      const n = normalize(parsed.data);
+      const { error } = await supabase
+        .from("transactions")
+        .update({
+          txn_date: n.txn_date,
+          account_id: n.account_id,
+          description: n.description,
+          category_id: n.category_id,
+          budget_group: n.budget_group,
+          notes: n.notes,
+        })
+        .eq("id", id)
+        .eq("user_id", user.id);
+      if (error) return { ok: false, error: error.message };
+      revalidate();
+      return { ok: true };
+    }
+    // No repayments yet: rebuild the split from scratch.
+    await supabase.from("transaction_debtors").delete().eq("transaction_id", id).eq("user_id", user.id);
+    const { error } = await supabase
+      .from("transactions")
+      .update({ ...normalize(parsed.data), ...splitTxnFields(parsed.data, myShare, partyCount) })
+      .eq("id", id)
+      .eq("user_id", user.id);
+    if (error) return { ok: false, error: error.message };
+    const linkRows = rows.map((r) => ({
+      user_id: user.id,
+      transaction_id: id,
+      debtor_id: r.debtor_id,
+      share: r.share,
+      settled_amount: 0,
+    }));
+    const { error: lErr } = await supabase.from("transaction_debtors").insert(linkRows);
+    if (lErr) return { ok: false, error: lErr.message };
+    revalidate();
+    return { ok: true };
+  }
+
+  // No people now. If it used to be a split, tear the junction down first.
+  if (hadLinks) {
+    if (settled) {
+      return {
+        ok: false,
+        error: "This split has repayments recorded. Delete the repayment(s) on the People page before removing the split.",
+      };
+    }
+    await supabase.from("transaction_debtors").delete().eq("transaction_id", id).eq("user_id", user.id);
+  }
+
   const debtorId = await resolveDebtorId(supabase, user.id, parsed.data);
   const { error } = await supabase
     .from("transactions")
-    .update({ ...normalize(parsed.data), debtor_id: debtorId })
+    .update({
+      ...normalize(parsed.data),
+      debtor_id: debtorId,
+      // Clear any split leftovers when the row is no longer a multi-person split.
+      ...(hadLinks ? { reimbursed_amount: 0 } : {}),
+    })
     .eq("id", id)
     .eq("user_id", user.id);
   if (error) return { ok: false, error: error.message };
@@ -162,7 +379,7 @@ export async function deleteTransaction(id: string): Promise<ActionResult> {
   // amount first so we can roll back the parent's running total after it's gone.
   const { data: row } = await supabase
     .from("transactions")
-    .select("amount, reimburses_id, repays_id, is_transfer")
+    .select("amount, reimburses_id, repays_id, is_transfer, debtor_id")
     .eq("id", id)
     .eq("user_id", user.id)
     .single();
@@ -189,6 +406,24 @@ export async function deleteTransaction(id: string): Promise<ActionResult> {
           .update({ reimbursed_amount: newTotal, reimbursed: newTotal >= owed - 0.005 })
           .eq("id", row.reimburses_id)
           .eq("user_id", user.id);
+        // If this repayment belonged to a per-person split, un-settle that
+        // person's slice too, so their balance on People comes back.
+        if (row.debtor_id) {
+          const { data: link } = await supabase
+            .from("transaction_debtors")
+            .select("id, settled_amount")
+            .eq("transaction_id", row.reimburses_id)
+            .eq("debtor_id", row.debtor_id)
+            .eq("user_id", user.id)
+            .maybeSingle();
+          if (link) {
+            await supabase
+              .from("transaction_debtors")
+              .update({ settled_amount: round2(Math.max(0, (link.settled_amount ?? 0) - row.amount)) })
+              .eq("id", link.id)
+              .eq("user_id", user.id);
+          }
+        }
       } else {
         // Split settlement: it lowered your share of the expense by its amount, so
         // deleting it restores that share (keeps the ledger reconciled).

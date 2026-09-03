@@ -9,6 +9,7 @@ import type {
   DebtorRow,
   IndiaTransferRow,
   SettingsRow,
+  TransactionDebtorRow,
   TransactionRow,
 } from "@/lib/database.types";
 import { monthKey, monthLabel } from "@/lib/format";
@@ -763,14 +764,55 @@ export interface DebtorBalance {
   outstanding: number; // derived from linked reimbursable expenses
 }
 
-/** Outstanding balance per debtor, summed from the expenses linked to each. */
+/**
+ * Split `amount` across parties, evenly by default with per-person overrides.
+ * `overrides[i]` is a fixed amount for that party (null = take an even share of
+ * whatever the fixed parties leave behind). Rounding drift is absorbed by the
+ * last even party (or, if everyone's fixed, the last party) so the shares always
+ * sum back to `amount` to the cent - which the receivable math relies on.
+ */
+export function splitShares(amount: number, overrides: Array<number | null>): number[] {
+  const total = round2(amount);
+  const fixedSum = round2(
+    overrides.reduce<number>((s, o) => s + (o != null ? Math.max(0, o) : 0), 0),
+  );
+  const evenIdx = overrides.map((o, i) => (o == null ? i : -1)).filter((i) => i >= 0);
+  const remainder = round2(Math.max(0, total - fixedSum));
+  const each = evenIdx.length > 0 ? round2(remainder / evenIdx.length) : 0;
+  const shares = overrides.map((o) => (o != null ? round2(Math.max(0, o)) : each));
+  // Nudge the last flexible party so the shares reconcile to the cent.
+  const drift = round2(total - shares.reduce((s, v) => s + v, 0));
+  if (Math.abs(drift) >= 0.005) {
+    const fixIdx = evenIdx.length > 0 ? evenIdx[evenIdx.length - 1] : shares.length - 1;
+    if (fixIdx >= 0) shares[fixIdx] = round2(Math.max(0, shares[fixIdx] + drift));
+  }
+  return shares;
+}
+
+/**
+ * Outstanding balance per debtor. Two sources, both derived from the ledger:
+ *   - `links` (transaction_debtors): a person's slice of a split expense, less
+ *     what they've paid back (`share − settled_amount`). This is how a bill
+ *     shared across several people is attributed.
+ *   - legacy single-debtor expenses (transactions.debtor_id) that carry NO link
+ *     row: the whole reimbursable receivable goes to that one person.
+ * A transaction that has link rows is owned by them; its debtor_id (if any) is
+ * ignored here so nothing is counted twice.
+ */
 export function debtorBalances(
   txns: TransactionRow[],
   debtors: DebtorRow[],
+  links: Pick<TransactionDebtorRow, "transaction_id" | "debtor_id" | "share" | "settled_amount">[] = [],
 ): DebtorBalance[] {
   const byDebtor = new Map<string, number>();
+  const linkedTxnIds = new Set<string>();
+  for (const l of links) {
+    linkedTxnIds.add(l.transaction_id);
+    const owed = round2(l.share - l.settled_amount);
+    if (owed > 0.005) byDebtor.set(l.debtor_id, round2((byDebtor.get(l.debtor_id) ?? 0) + owed));
+  }
   for (const t of txns) {
-    if (!t.debtor_id) continue;
+    if (!t.debtor_id || linkedTxnIds.has(t.id)) continue;
     const out = outstandingReceivable(t);
     if (out > 0.005) byDebtor.set(t.debtor_id, round2((byDebtor.get(t.debtor_id) ?? 0) + out));
   }

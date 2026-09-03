@@ -8,6 +8,7 @@ import type {
   InflowTypeRow,
   OtherIncomeRow,
   SettingsRow,
+  TransactionDebtorRow,
   TransactionRow,
 } from "@/lib/database.types";
 import {
@@ -35,6 +36,7 @@ export interface ExportData {
   categories: CategoryRow[];
   inflowTypes: InflowTypeRow[];
   debtors: DebtorRow[];
+  debtorLinks: TransactionDebtorRow[];
   transactions: TransactionRow[];
   indiaTransfers: IndiaTransferRow[];
   otherIncome: OtherIncomeRow[];
@@ -677,8 +679,8 @@ function buildDebtors(wb: ExcelJS.Workbook, data: ExportData) {
     { header: "Owes", key: "amount", width: 14, numFmt: MONEY },
   ];
   const ws = dataSheet(wb, "Debtors", "FFEF4444", cols);
-  // Balances are derived from the linked reimbursable expenses, not stored.
-  const sorted = debtorBalances(data.transactions, data.debtors).sort(
+  // Balances are derived from the linked reimbursable expenses and split slices, not stored.
+  const sorted = debtorBalances(data.transactions, data.debtors, data.debtorLinks).sort(
     (a, b) => b.outstanding - a.outstanding,
   );
   for (const { debtor: d, outstanding } of sorted) {

@@ -44,7 +44,7 @@ import { ReconciliationFlow } from "@/components/reconciliation";
 import { fmtDate, fmtMoney, hueColor, monthLabel, monthKey, todayISO } from "@/lib/format";
 import { myAmount, isSavingsTxn, reconcile, signed, monthlyBalances } from "@/lib/calc";
 import { cn } from "@/lib/utils";
-import type { TransactionRow } from "@/lib/database.types";
+import type { TransactionRow, TransactionDebtorRow } from "@/lib/database.types";
 import { useReadOnly } from "@/components/read-only-context";
 import { TransactionDialog, type TxnLookups } from "./transaction-dialog";
 import { ReimburseDialog } from "./reimburse-dialog";
@@ -57,12 +57,14 @@ const CURRENT_MONTH = todayISO().slice(0, 7);
 
 export function TransactionsView({
   transactions,
+  debtorLinks,
   lookups,
   netWorth,
   netWorthAll,
   hiddenAccountIds,
 }: {
   transactions: TransactionRow[];
+  debtorLinks: TransactionDebtorRow[];
   lookups: TxnLookups;
   netWorth: number; // net worth with hidden accounts excluded
   netWorthAll: number; // net worth including hidden accounts (for the reveal toggle)
@@ -77,6 +79,21 @@ export function TransactionsView({
     () => new Map(lookups.accounts.map((a) => [a.id, a])),
     [lookups.accounts],
   );
+  const debtorNameById = React.useMemo(
+    () => new Map(lookups.debtors.map((d) => [d.id, d.name])),
+    [lookups.debtors],
+  );
+  // Who owes you on each split expense (the transaction_debtors rows), grouped by
+  // transaction, so a row can show its participants and route settling to People.
+  const peopleByTxn = React.useMemo(() => {
+    const map = new Map<string, { debtor_id: string; share: number }[]>();
+    for (const l of debtorLinks) {
+      const arr = map.get(l.transaction_id);
+      if (arr) arr.push({ debtor_id: l.debtor_id, share: l.share });
+      else map.set(l.transaction_id, [{ debtor_id: l.debtor_id, share: l.share }]);
+    }
+    return map;
+  }, [debtorLinks]);
 
   const [search, setSearch] = React.useState("");
   const [account, setAccount] = React.useState("all");
@@ -283,8 +300,14 @@ export function TransactionsView({
     const cat = t.category_id ? catById.get(t.category_id) : undefined;
     const acct = acctById.get(t.account_id);
     const color = cat ? hueColor(cat.color_hue) : "var(--muted-foreground)";
+    // People who owe you a slice of this expense (a multi-person split). These
+    // settle on the People page, per person - not with the per-txn actions below.
+    const people = peopleByTxn.get(t.id);
+    const isPeopleSplit = !!people?.length;
     const isSplit =
-      !t.is_transfer && !!t.split_count && (t.whose_expense === "Group" || t.whose_expense === "Roommates");
+      !t.is_transfer &&
+      (t.whose_expense === "Group" || t.whose_expense === "Roommates") &&
+      (!!t.split_count || isPeopleSplit);
     // Reimbursable money still outstanding on this expense (for the write-off action).
     const owedBack = !t.is_transfer && t.reimbursable ? t.amount - myAmount(t) : 0;
     const outstanding = Math.max(0, owedBack - (t.reimbursed_amount ?? 0));
@@ -346,6 +369,17 @@ export function TransactionsView({
                 </span>
               </>
             ) : null}
+            {isPeopleSplit ? (
+              <>
+                <span className="opacity-40">·</span>
+                <span className="inline-flex items-center gap-1">
+                  <Users className="size-3 shrink-0" />
+                  <span className="truncate">
+                    {people!.map((p) => debtorNameById.get(p.debtor_id) ?? "someone").join(", ")}
+                  </span>
+                </span>
+              </>
+            ) : null}
           </div>
         </div>
         <div className="shrink-0 text-right">
@@ -375,12 +409,14 @@ export function TransactionsView({
             <DropdownMenuItem onClick={() => onEdit(t)}>
               <Pencil className="size-4" /> Edit
             </DropdownMenuItem>
-            {!t.is_transfer && t.reimbursable && !t.reimbursed ? (
+            {/* A multi-person split settles per person on the People page, so the
+                whole-expense reimburse / write-off actions are hidden here. */}
+            {!t.is_transfer && t.reimbursable && !t.reimbursed && !isPeopleSplit ? (
               <DropdownMenuItem onClick={() => onReimburse(t)}>
                 <HandCoins className="size-4" /> Record reimbursement
               </DropdownMenuItem>
             ) : null}
-            {!t.is_transfer && t.reimbursable && !t.reimbursed && outstanding > 0.005 ? (
+            {!t.is_transfer && t.reimbursable && !t.reimbursed && !isPeopleSplit && outstanding > 0.005 ? (
               <DropdownMenuItem onClick={() => onSettle(t, outstanding)}>
                 <Ban className="size-4" /> Write off {fmtMoney(outstanding, { cents: true })} as spent
               </DropdownMenuItem>
@@ -562,6 +598,7 @@ export function TransactionsView({
         onOpenChange={setDialogOpen}
         lookups={lookups}
         existing={editing}
+        existingPeople={editing ? peopleByTxn.get(editing.id) ?? null : null}
       />
       <ReimburseDialog
         open={reimburseOpen}

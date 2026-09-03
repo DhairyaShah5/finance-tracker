@@ -8,12 +8,13 @@ export const dynamic = "force-dynamic";
 export default async function TransactionsPage() {
   const { supabase, user } = await requireUser();
 
-  const [txnsRes, accountsRes, categoriesRes, inflowRes, debtorsRes] = await Promise.all([
+  const [txnsRes, accountsRes, categoriesRes, inflowRes, debtorsRes, linksRes] = await Promise.all([
     supabase.from("transactions").select("*").eq("user_id", user.id).order("txn_date", { ascending: false }),
     supabase.from("accounts").select("*").eq("user_id", user.id).order("display_order"),
     supabase.from("categories").select("*").eq("user_id", user.id).order("display_order"),
     supabase.from("inflow_types").select("*").eq("user_id", user.id).order("display_order"),
     supabase.from("debtors").select("*").eq("user_id", user.id).order("name"),
+    supabase.from("transaction_debtors").select("*").eq("user_id", user.id),
   ]);
 
   // The Transactions page keeps every row (it's the raw ledger) but defaults to
@@ -42,6 +43,7 @@ export default async function TransactionsPage() {
       <PageHeader title="Transactions" description="Every dollar in and out, your full ledger." />
       <TransactionsView
         transactions={allTxns}
+        debtorLinks={linksRes.data ?? []}
         netWorth={netWorth}
         netWorthAll={netWorthAll}
         hiddenAccountIds={[...hiddenIds]}

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { myAmount, outstandingReceivable, outstandingPayable } from "@/lib/calc";
-import type { Database } from "@/lib/database.types";
+import type { Database, TransactionRow, TransactionDebtorRow } from "@/lib/database.types";
 
 type TxnInsert = Database["public"]["Tables"]["transactions"]["Insert"];
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -165,8 +165,11 @@ export async function settleDebtor(input: SettleInput): Promise<ActionResult> {
     .single();
   if (dErr || !debtor) return { ok: false, error: "Debtor not found." };
 
-  // The person's still-outstanding fronted expenses, oldest first.
-  const { data: expenses } = await supabase
+  // What this person owes comes from two places, both oldest-first:
+  //   legacy  - a whole reimbursable expense fronted for them (transactions.debtor_id)
+  //   link    - their slice of a split bill (transaction_debtors), debtor_id null on
+  //             the parent, so the two sets never overlap.
+  const { data: legacyExpenses } = await supabase
     .from("transactions")
     .select("*")
     .eq("user_id", user.id)
@@ -176,20 +179,44 @@ export async function settleDebtor(input: SettleInput): Promise<ActionResult> {
     .eq("reimbursable", true)
     .order("txn_date", { ascending: true });
 
-  const open = (expenses ?? [])
-    .map((e) => ({ e, out: outstandingReceivable(e) }))
-    .filter((x) => x.out > 0.005);
-  const totalOut = round2(open.reduce((s, x) => s + x.out, 0));
+  const { data: links } = await supabase
+    .from("transaction_debtors")
+    .select("*")
+    .eq("user_id", user.id)
+    .eq("debtor_id", debtor.id);
+  const linkTxnIds = [...new Set((links ?? []).map((l) => l.transaction_id))];
+  const { data: linkTxns } = linkTxnIds.length
+    ? await supabase.from("transactions").select("*").eq("user_id", user.id).in("id", linkTxnIds)
+    : { data: [] as TransactionRow[] };
+  const txnById = new Map((linkTxns ?? []).map((t) => [t.id, t]));
+
+  type Item =
+    | { kind: "legacy"; e: TransactionRow; out: number }
+    | { kind: "link"; e: TransactionRow; link: TransactionDebtorRow; out: number };
+  const items: Item[] = [];
+  for (const e of legacyExpenses ?? []) {
+    const out = outstandingReceivable(e);
+    if (out > 0.005) items.push({ kind: "legacy", e, out });
+  }
+  for (const l of links ?? []) {
+    const e = txnById.get(l.transaction_id);
+    if (!e) continue;
+    const out = round2(l.share - l.settled_amount);
+    if (out > 0.005) items.push({ kind: "link", e, link: l, out });
+  }
+  items.sort((a, b) => (a.e.txn_date < b.e.txn_date ? -1 : a.e.txn_date > b.e.txn_date ? 1 : 0));
+
+  const totalOut = round2(items.reduce((s, x) => s + x.out, 0));
   const settleAmt = round2(Math.min(d.amount, totalOut));
   if (settleAmt <= 0) return { ok: false, error: "Nothing left to settle." };
 
   const label = d.description?.trim() || null;
   const when = d.txn_date || new Date().toISOString().slice(0, 10);
   let remaining = settleAmt;
-  for (const { e, out } of open) {
+  for (const item of items) {
     if (remaining <= 0.005) break;
+    const { e, out } = item;
     const take = round2(Math.min(remaining, out));
-    const owed = round2(e.amount - myAmount(e));
 
     if (d.mode === "cash") {
       const row: TxnInsert = {
@@ -206,15 +233,44 @@ export async function settleDebtor(input: SettleInput): Promise<ActionResult> {
       };
       const { error: insErr } = await supabase.from("transactions").insert(row);
       if (insErr) return { ok: false, error: insErr.message };
-      const newTotal = round2((e.reimbursed_amount ?? 0) + take);
+      // Cash drops the receivable via reimbursed_amount (money came back).
+      const owed = round2(e.amount - myAmount(e));
+      const newReimbursed = round2((e.reimbursed_amount ?? 0) + take);
       const { error: updErr } = await supabase
         .from("transactions")
-        .update({ reimbursed_amount: newTotal, reimbursed: newTotal >= owed - 0.005 })
+        .update({ reimbursed_amount: newReimbursed, reimbursed: newReimbursed >= owed - 0.005 })
         .eq("id", e.id)
         .eq("user_id", user.id);
       if (updErr) return { ok: false, error: updErr.message };
+      if (item.kind === "link") {
+        const { error: lErr } = await supabase
+          .from("transaction_debtors")
+          .update({ settled_amount: round2((item.link.settled_amount ?? 0) + take) })
+          .eq("id", item.link.id)
+          .eq("user_id", user.id);
+        if (lErr) return { ok: false, error: lErr.message };
+      }
+    } else if (item.kind === "link") {
+      // Paid in kind on a split: they covered your expense, so their slice
+      // becomes your own spending (my_share up), and their slice is settled. The
+      // receivable falls by `take` while consumption rises by the same - balanced.
+      const newShare = round2(myAmount(e) + take);
+      const owedAfter = round2(e.amount - newShare);
+      const { error: updErr } = await supabase
+        .from("transactions")
+        .update({ my_share: newShare, reimbursed: (e.reimbursed_amount ?? 0) >= owedAfter - 0.005 })
+        .eq("id", e.id)
+        .eq("user_id", user.id);
+      if (updErr) return { ok: false, error: updErr.message };
+      const { error: lErr } = await supabase
+        .from("transaction_debtors")
+        .update({ settled_amount: round2((item.link.settled_amount ?? 0) + take) })
+        .eq("id", item.link.id)
+        .eq("user_id", user.id);
+      if (lErr) return { ok: false, error: lErr.message };
     } else {
-      // Paid in kind: the fronted slice becomes your own spending (write-off).
+      // Paid in kind on a legacy fronted expense: the fronted slice becomes your
+      // own spending (write-off), exactly as before.
       const newShare = round2(myAmount(e) + take);
       const { error: updErr } = await supabase
         .from("transactions")

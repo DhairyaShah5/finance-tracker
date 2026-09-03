@@ -15,13 +15,14 @@ export async function GET() {
   }
   const { supabase, user } = ctx;
 
-  const [settings, accounts, categories, inflowTypes, debtors, transactions, indiaTransfers, otherIncome] =
+  const [settings, accounts, categories, inflowTypes, debtors, debtorLinks, transactions, indiaTransfers, otherIncome] =
     await Promise.all([
       supabase.from("settings").select("*").eq("user_id", user.id).maybeSingle(),
       supabase.from("accounts").select("*").eq("user_id", user.id).order("display_order"),
       supabase.from("categories").select("*").eq("user_id", user.id).order("display_order"),
       supabase.from("inflow_types").select("*").eq("user_id", user.id).order("display_order"),
       supabase.from("debtors").select("*").eq("user_id", user.id),
+      supabase.from("transaction_debtors").select("*").eq("user_id", user.id),
       supabase.from("transactions").select("*").eq("user_id", user.id).order("txn_date", { ascending: true }),
       supabase.from("india_transfers").select("*").eq("user_id", user.id).order("transfer_date", { ascending: true }),
       supabase.from("other_income").select("*").eq("user_id", user.id),
@@ -33,6 +34,7 @@ export async function GET() {
     categories: categories.data ?? [],
     inflowTypes: inflowTypes.data ?? [],
     debtors: debtors.data ?? [],
+    debtorLinks: debtorLinks.data ?? [],
     transactions: transactions.data ?? [],
     indiaTransfers: indiaTransfers.data ?? [],
     otherIncome: otherIncome.data ?? [],

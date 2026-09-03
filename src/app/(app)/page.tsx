@@ -38,7 +38,7 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   const { supabase, user } = await requireUser();
 
-  const [settingsRes, txnsRes, accountsRes, categoriesRes, debtorsRes, creditorsRes, inflowRes] = await Promise.all([
+  const [settingsRes, txnsRes, accountsRes, categoriesRes, debtorsRes, creditorsRes, inflowRes, linksRes] = await Promise.all([
     supabase.from("settings").select("*").eq("user_id", user.id).single(),
     supabase.from("transactions").select("*").eq("user_id", user.id).order("txn_date", { ascending: true }),
     supabase.from("accounts").select("*").eq("user_id", user.id).order("display_order"),
@@ -46,6 +46,7 @@ export default async function DashboardPage() {
     supabase.from("debtors").select("*").eq("user_id", user.id),
     supabase.from("creditors").select("*").eq("user_id", user.id),
     supabase.from("inflow_types").select("*").eq("user_id", user.id),
+    supabase.from("transaction_debtors").select("*").eq("user_id", user.id),
   ]);
 
   // requireUser() guarantees a settings row, but stay defensive against a null.
@@ -77,8 +78,13 @@ export default async function DashboardPage() {
   // We split it for the modal: expenses attached to a person are grouped under
   // that debtor; the rest (e.g. work) shows as loose reimbursables.
   const totalOwed = recon.reimbursable;
+  // Split slices, filtered to visible transactions - they're grouped under each
+  // person below, so a split's parent expense is NOT a "loose" reimbursable.
+  const visibleTxnIds = new Set(txns.map((t) => t.id));
+  const links = (linksRes.data ?? []).filter((l) => visibleTxnIds.has(l.transaction_id));
+  const splitTxnIds = new Set(links.map((l) => l.transaction_id));
   const owedReimbursables = txns
-    .filter((t) => t.direction === "outflow" && !t.is_transfer && t.reimbursable && !t.debtor_id)
+    .filter((t) => t.direction === "outflow" && !t.is_transfer && t.reimbursable && !t.debtor_id && !splitTxnIds.has(t.id))
     .map((t) => ({
       id: t.id,
       description: t.description,
@@ -87,7 +93,7 @@ export default async function DashboardPage() {
     }))
     .filter((r) => r.outstanding > 0.005)
     .sort((a, b) => (a.date < b.date ? 1 : -1));
-  const owedDebtors = debtorBalances(txns, debtors)
+  const owedDebtors = debtorBalances(txns, debtors, links)
     .filter((b) => b.outstanding > 0.005)
     .map((b) => ({ id: b.debtor.id, name: b.debtor.name, note: b.debtor.note, amount: b.outstanding }))
     .sort((a, b) => b.amount - a.amount);

@@ -7,20 +7,25 @@ export const dynamic = "force-dynamic";
 export default async function PeoplePage() {
   const { supabase, user } = await requireUser();
 
-  const [debtorsRes, creditorsRes, accountsRes, txnsRes, categoriesRes] = await Promise.all([
+  const [debtorsRes, creditorsRes, accountsRes, txnsRes, categoriesRes, linksRes] = await Promise.all([
     supabase.from("debtors").select("*").eq("user_id", user.id),
     supabase.from("creditors").select("*").eq("user_id", user.id),
     supabase.from("accounts").select("*").eq("user_id", user.id).order("display_order"),
     supabase.from("transactions").select("*").eq("user_id", user.id),
     supabase.from("categories").select("*").eq("user_id", user.id).order("display_order"),
+    supabase.from("transaction_debtors").select("*").eq("user_id", user.id),
   ]);
 
   // Hidden accounts drop out: money fronted or borrowed on one no longer counts,
   // and the account isn't offered when settling up.
   const { accounts, txns } = visibleLedger(accountsRes.data ?? [], txnsRes.data ?? [], categoriesRes.data ?? []);
+  // Per-person split slices, but only for transactions that survived the hidden-
+  // account filter (a slice of an expense on a hidden account shouldn't count).
+  const visibleTxnIds = new Set(txns.map((t) => t.id));
+  const links = (linksRes.data ?? []).filter((l) => visibleTxnIds.has(l.transaction_id));
 
   // Balances are derived from the ledger, largest first (matching the old order).
-  const debtors = debtorBalances(txns, debtorsRes.data ?? []).sort((a, b) => b.outstanding - a.outstanding);
+  const debtors = debtorBalances(txns, debtorsRes.data ?? [], links).sort((a, b) => b.outstanding - a.outstanding);
   const creditors = creditorBalances(txns, creditorsRes.data ?? []).sort((a, b) => b.outstanding - a.outstanding);
 
   return (
