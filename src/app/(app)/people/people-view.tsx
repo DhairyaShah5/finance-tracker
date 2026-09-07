@@ -158,6 +158,98 @@ export function PeopleView({
     });
   }
 
+  // People with a live balance stay up top; anyone fully squared up drops to the
+  // "Friends" section below so the main list only shows who still owes whom.
+  const active = people.filter((p) => p.owed > 0.005 || p.oweThem > 0.005);
+  const settled = people
+    .filter((p) => p.owed <= 0.005 && p.oweThem <= 0.005)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  function personRow(p: Person) {
+    const both = !!p.debtor && !!p.creditor;
+    const canSettle = p.owed > 0.005; // they owe you -> settle up
+    const canRepay = p.oweThem > 0.005; // you owe them -> pay back
+    // With both sides live, lead with whichever the net leans toward.
+    const primary = canSettle && canRepay ? (p.net >= 0 ? "settle" : "repay") : canSettle ? "settle" : canRepay ? "repay" : null;
+    const openSettle = () => guard(() => { if (p.debtor) { setSettling({ debtor: p.debtor, outstanding: p.owed }); setSettleOpen(true); } });
+    const openRepay = () => guard(() => { if (p.creditor) { setRepaying({ creditor: p.creditor, outstanding: p.oweThem }); setRepayOpen(true); } });
+    return (
+      <TableRow key={p.key}>
+        <TableCell className="font-medium">{p.name}</TableCell>
+        <TableCell className="hidden max-w-[32ch] truncate text-sm text-muted-foreground sm:table-cell">
+          {p.note?.trim() ? p.note : "-"}
+        </TableCell>
+        <TableCell className="text-right">
+          <Money value={p.net} cents colored={Math.abs(p.net) > 0.005} className="font-medium" />
+          {both && canSettle && canRepay ? (
+            <div className="text-xs text-muted-foreground">
+              {fmtMoney(p.owed, { cents: true })} owed · {fmtMoney(p.oweThem, { cents: true })} you owe
+            </div>
+          ) : p.net > 0.005 ? (
+            <div className="text-xs text-muted-foreground">owes you</div>
+          ) : p.net < -0.005 ? (
+            <div className="text-xs text-muted-foreground">you owe</div>
+          ) : null}
+        </TableCell>
+        <TableCell>
+          <div className="flex items-center justify-end gap-1">
+            {primary === "settle" ? (
+              <Button variant="outline" size="sm" className="h-7 gap-1.5" onClick={openSettle}>
+                <HandCoins className="size-3.5" /> Settle up
+              </Button>
+            ) : primary === "repay" ? (
+              <Button variant="outline" size="sm" className="h-7 gap-1.5" onClick={openRepay}>
+                <HandCoins className="size-3.5" /> Pay back
+              </Button>
+            ) : (
+              <span className="rounded-full bg-secondary px-2 py-0.5 text-xs text-positive">Settled</span>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="size-7">
+                  <MoreHorizontal className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {canSettle ? (
+                  <DropdownMenuItem onClick={openSettle}>
+                    <HandCoins className="size-4" /> Settle up{both ? " (they owe you)" : ""}
+                  </DropdownMenuItem>
+                ) : null}
+                {canRepay ? (
+                  <DropdownMenuItem onClick={openRepay}>
+                    <HandCoins className="size-4" /> Pay back{both ? " (you owe them)" : ""}
+                  </DropdownMenuItem>
+                ) : null}
+                {canSettle || canRepay ? <DropdownMenuSeparator /> : null}
+                {p.debtor ? (
+                  <DropdownMenuItem onClick={() => guard(() => { setEditingDebtor(p.debtor); setDebtorOpen(true); })}>
+                    <Pencil className="size-4" /> Edit{both ? " owed-to-you" : ""}
+                  </DropdownMenuItem>
+                ) : null}
+                {p.creditor ? (
+                  <DropdownMenuItem onClick={() => guard(() => { setEditingCreditor(p.creditor); setCreditorOpen(true); })}>
+                    <Pencil className="size-4" /> Edit{both ? " you-owe" : ""}
+                  </DropdownMenuItem>
+                ) : null}
+                {p.debtor ? (
+                  <DropdownMenuItem variant="destructive" onClick={() => onDeleteDebtor(p.debtor!)}>
+                    <Trash2 className="size-4" /> Delete{both ? " owed-to-you" : ""}
+                  </DropdownMenuItem>
+                ) : null}
+                {p.creditor ? (
+                  <DropdownMenuItem variant="destructive" onClick={() => onDeleteCreditor(p.creditor!)}>
+                    <Trash2 className="size-4" /> Delete{both ? " you-owe" : ""}
+                  </DropdownMenuItem>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </TableCell>
+      </TableRow>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -210,12 +302,13 @@ export function PeopleView({
             </DropdownMenuContent>
           </DropdownMenu>
         </CardHeader>
-        {people.length === 0 ? (
+        {active.length === 0 ? (
           <CardContent className="flex flex-col items-center gap-2 py-8 text-center">
             <Users className="size-7 text-muted-foreground" />
             <p className="text-sm text-muted-foreground">
-              No money between you and anyone right now. Add someone when you front money for them, or
-              when you borrow.
+              {settled.length > 0
+                ? "Everyone's squared up right now. Past friends are listed below."
+                : "No money between you and anyone right now. Add someone when you front money for them, or when you borrow."}
             </p>
           </CardContent>
         ) : (
@@ -228,95 +321,31 @@ export function PeopleView({
                 <TableHead className="w-px" />
               </TableRow>
             </TableHeader>
-            <TableBody>
-              {people.map((p) => {
-                const both = !!p.debtor && !!p.creditor;
-                const canSettle = p.owed > 0.005; // they owe you -> settle up
-                const canRepay = p.oweThem > 0.005; // you owe them -> pay back
-                // With both sides live, lead with whichever the net leans toward.
-                const primary = canSettle && canRepay ? (p.net >= 0 ? "settle" : "repay") : canSettle ? "settle" : canRepay ? "repay" : null;
-                const openSettle = () => guard(() => { if (p.debtor) { setSettling({ debtor: p.debtor, outstanding: p.owed }); setSettleOpen(true); } });
-                const openRepay = () => guard(() => { if (p.creditor) { setRepaying({ creditor: p.creditor, outstanding: p.oweThem }); setRepayOpen(true); } });
-                return (
-                  <TableRow key={p.key}>
-                    <TableCell className="font-medium">{p.name}</TableCell>
-                    <TableCell className="hidden max-w-[32ch] truncate text-sm text-muted-foreground sm:table-cell">
-                      {p.note?.trim() ? p.note : "-"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Money value={p.net} cents colored={Math.abs(p.net) > 0.005} className="font-medium" />
-                      {both && canSettle && canRepay ? (
-                        <div className="text-xs text-muted-foreground">
-                          {fmtMoney(p.owed, { cents: true })} owed · {fmtMoney(p.oweThem, { cents: true })} you owe
-                        </div>
-                      ) : p.net > 0.005 ? (
-                        <div className="text-xs text-muted-foreground">owes you</div>
-                      ) : p.net < -0.005 ? (
-                        <div className="text-xs text-muted-foreground">you owe</div>
-                      ) : null}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center justify-end gap-1">
-                        {primary === "settle" ? (
-                          <Button variant="outline" size="sm" className="h-7 gap-1.5" onClick={openSettle}>
-                            <HandCoins className="size-3.5" /> Settle up
-                          </Button>
-                        ) : primary === "repay" ? (
-                          <Button variant="outline" size="sm" className="h-7 gap-1.5" onClick={openRepay}>
-                            <HandCoins className="size-3.5" /> Pay back
-                          </Button>
-                        ) : (
-                          <span className="rounded-full bg-secondary px-2 py-0.5 text-xs text-positive">Settled</span>
-                        )}
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="size-7">
-                              <MoreHorizontal className="size-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {canSettle ? (
-                              <DropdownMenuItem onClick={openSettle}>
-                                <HandCoins className="size-4" /> Settle up{both ? " (they owe you)" : ""}
-                              </DropdownMenuItem>
-                            ) : null}
-                            {canRepay ? (
-                              <DropdownMenuItem onClick={openRepay}>
-                                <HandCoins className="size-4" /> Pay back{both ? " (you owe them)" : ""}
-                              </DropdownMenuItem>
-                            ) : null}
-                            {canSettle || canRepay ? <DropdownMenuSeparator /> : null}
-                            {p.debtor ? (
-                              <DropdownMenuItem onClick={() => guard(() => { setEditingDebtor(p.debtor); setDebtorOpen(true); })}>
-                                <Pencil className="size-4" /> Edit{both ? " owed-to-you" : ""}
-                              </DropdownMenuItem>
-                            ) : null}
-                            {p.creditor ? (
-                              <DropdownMenuItem onClick={() => guard(() => { setEditingCreditor(p.creditor); setCreditorOpen(true); })}>
-                                <Pencil className="size-4" /> Edit{both ? " you-owe" : ""}
-                              </DropdownMenuItem>
-                            ) : null}
-                            {p.debtor ? (
-                              <DropdownMenuItem variant="destructive" onClick={() => onDeleteDebtor(p.debtor!)}>
-                                <Trash2 className="size-4" /> Delete{both ? " owed-to-you" : ""}
-                              </DropdownMenuItem>
-                            ) : null}
-                            {p.creditor ? (
-                              <DropdownMenuItem variant="destructive" onClick={() => onDeleteCreditor(p.creditor!)}>
-                                <Trash2 className="size-4" /> Delete{both ? " you-owe" : ""}
-                              </DropdownMenuItem>
-                            ) : null}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
+            <TableBody>{active.map(personRow)}</TableBody>
           </Table>
         )}
       </Card>
+
+      {/* Fully squared-up people - kept for history, out of the way. */}
+      {settled.length > 0 ? (
+        <Card className="overflow-hidden">
+          <CardHeader>
+            <CardTitle className="text-base">Friends</CardTitle>
+            <p className="text-sm text-muted-foreground">All squared up - nothing owed either way.</p>
+          </CardHeader>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead className="hidden sm:table-cell">Note</TableHead>
+                <TableHead className="text-right">Net</TableHead>
+                <TableHead className="w-px" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>{settled.map(personRow)}</TableBody>
+          </Table>
+        </Card>
+      ) : null}
 
       <DebtorDialog
         open={debtorOpen}
