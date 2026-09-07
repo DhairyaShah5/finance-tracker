@@ -44,7 +44,7 @@ import { ReconciliationFlow } from "@/components/reconciliation";
 import { fmtDate, fmtMoney, hueColor, monthLabel, monthKey, todayISO } from "@/lib/format";
 import { myAmount, isSavingsTxn, reconcile, signed, monthlyBalances } from "@/lib/calc";
 import { cn } from "@/lib/utils";
-import type { TransactionRow, TransactionDebtorRow } from "@/lib/database.types";
+import type { TransactionRow, TransactionDebtorRow, CreditorRow } from "@/lib/database.types";
 import { useReadOnly } from "@/components/read-only-context";
 import { TransactionDialog, type TxnLookups } from "./transaction-dialog";
 import { ReimburseDialog } from "./reimburse-dialog";
@@ -58,6 +58,7 @@ const CURRENT_MONTH = todayISO().slice(0, 7);
 export function TransactionsView({
   transactions,
   debtorLinks,
+  creditors,
   lookups,
   netWorth,
   netWorthAll,
@@ -65,6 +66,7 @@ export function TransactionsView({
 }: {
   transactions: TransactionRow[];
   debtorLinks: TransactionDebtorRow[];
+  creditors: CreditorRow[];
   lookups: TxnLookups;
   netWorth: number; // net worth with hidden accounts excluded
   netWorthAll: number; // net worth including hidden accounts (for the reveal toggle)
@@ -94,6 +96,23 @@ export function TransactionsView({
     }
     return map;
   }, [debtorLinks]);
+  const creditorNameById = React.useMemo(
+    () => new Map(creditors.map((c) => [c.id, c.name])),
+    [creditors],
+  );
+  // A creditor "paid for me" is stored as a net-zero pair on an account: your
+  // real expense (outflow, creditor_id, repays_id -> the borrow) plus an excluded
+  // borrow inflow that offsets it (so your balance doesn't move - a friend paid).
+  // We collapse each pair into the single expense line and hide the phantom
+  // inflow, since no money actually touched your account.
+  const paidForMeBorrowIds = React.useMemo(() => {
+    const set = new Set<string>();
+    for (const t of transactions) {
+      if (!t.is_transfer && t.creditor_id && t.repays_id) set.add(t.repays_id);
+    }
+    return set;
+  }, [transactions]);
+  const isPaidForMe = (t: TransactionRow) => !t.is_transfer && !!t.creditor_id && !!t.repays_id;
 
   const [search, setSearch] = React.useState("");
   const [account, setAccount] = React.useState("all");
@@ -131,6 +150,10 @@ export function TransactionsView({
     const q = search.trim().toLowerCase();
     return activeTxns
       .filter((t) => {
+        // Hide the offsetting borrow half of a "paid for me" pair from the list;
+        // its expense line stands in for the whole thing. It stays in activeTxns
+        // so the running balance math still sees the net-zero pair.
+        if (paidForMeBorrowIds.has(t.id)) return false;
         if (q) {
           // Match the description OR the amount, so you can find a transaction by
           // its number when you don't remember what you called it. A numeric query
@@ -156,7 +179,7 @@ export function TransactionsView({
       .sort((a, b) =>
         a.txn_date < b.txn_date ? 1 : a.txn_date > b.txn_date ? -1 : b.created_at.localeCompare(a.created_at),
       );
-  }, [activeTxns, search, account, category, direction]);
+  }, [activeTxns, search, account, category, direction, paidForMeBorrowIds]);
 
   // Group filtered transactions by month (newest month first).
   const groups = React.useMemo(() => {
@@ -304,6 +327,9 @@ export function TransactionsView({
     // settle on the People page, per person - not with the per-txn actions below.
     const people = peopleByTxn.get(t.id);
     const isPeopleSplit = !!people?.length;
+    // A creditor paid for this directly - your spending, but you owe them, and no
+    // money left your account. Show who paid instead of the account.
+    const paidBy = isPaidForMe(t) ? creditorNameById.get(t.creditor_id!) ?? "someone" : null;
     const isSplit =
       !t.is_transfer &&
       (t.whose_expense === "Group" || t.whose_expense === "Roommates") &&
@@ -351,10 +377,20 @@ export function TransactionsView({
                 </Badge>
               )
             ) : null}
+            {paidBy ? (
+              <Badge variant="outline" className="gap-1 text-[10px]">
+                <HandCoins className="size-2.5" /> You owe
+              </Badge>
+            ) : null}
           </div>
           <div className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-muted-foreground">
             <span className="tnum">{fmtDate(t.txn_date, "short")}</span>
-            {acct ? (
+            {paidBy ? (
+              <>
+                <span className="opacity-40">·</span>
+                <span className="truncate">Paid by {paidBy}</span>
+              </>
+            ) : acct ? (
               <>
                 <span className="opacity-40">·</span>
                 <span className="truncate">{acct.name}</span>

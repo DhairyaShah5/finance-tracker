@@ -8,12 +8,13 @@ export const dynamic = "force-dynamic";
 export default async function TransactionsPage() {
   const { supabase, user } = await requireUser();
 
-  const [txnsRes, accountsRes, categoriesRes, inflowRes, debtorsRes, linksRes] = await Promise.all([
+  const [txnsRes, accountsRes, categoriesRes, inflowRes, debtorsRes, creditorsRes, linksRes] = await Promise.all([
     supabase.from("transactions").select("*").eq("user_id", user.id).order("txn_date", { ascending: false }),
     supabase.from("accounts").select("*").eq("user_id", user.id).order("display_order"),
     supabase.from("categories").select("*").eq("user_id", user.id).order("display_order"),
     supabase.from("inflow_types").select("*").eq("user_id", user.id).order("display_order"),
     supabase.from("debtors").select("*").eq("user_id", user.id).order("name"),
+    supabase.from("creditors").select("*").eq("user_id", user.id).order("name"),
     supabase.from("transaction_debtors").select("*").eq("user_id", user.id),
   ]);
 
@@ -44,6 +45,7 @@ export default async function TransactionsPage() {
       <TransactionsView
         transactions={allTxns}
         debtorLinks={linksRes.data ?? []}
+        creditors={creditorsRes.data ?? []}
         netWorth={netWorth}
         netWorthAll={netWorthAll}
         hiddenAccountIds={[...hiddenIds]}
