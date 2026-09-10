@@ -64,11 +64,14 @@ type Person = {
 export function PeopleView({
   debtorBalances,
   creditorBalances,
+  derivedNotes,
   accounts,
   categories,
 }: {
   debtorBalances: DebtorBalance[];
   creditorBalances: CreditorBalance[];
+  /** Live note per person (by normalized name), derived from open items. */
+  derivedNotes: Record<string, string>;
   accounts: AccountRow[];
   categories: CategoryRow[];
 }) {
@@ -122,10 +125,15 @@ export function PeopleView({
       map.set(key, row);
     }
     const arr = [...map.values()];
-    for (const p of arr) p.net = round2(p.owed - p.oweThem);
+    for (const p of arr) {
+      p.net = round2(p.owed - p.oweThem);
+      // Prefer the live "what for" note over whatever was stored when they were
+      // added; fall back to the stored note only when nothing is open.
+      p.note = derivedNotes[p.key] ?? p.note;
+    }
     // Largest "owes you" first, largest "you owe" last, settled in between.
     return arr.sort((a, b) => b.net - a.net);
-  }, [debtorBalances, creditorBalances]);
+  }, [debtorBalances, creditorBalances, derivedNotes]);
 
   function guard(fn: () => void) {
     if (readOnly) return void toast.info(VIEW_ONLY);
