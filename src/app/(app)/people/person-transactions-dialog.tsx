@@ -145,6 +145,10 @@ export function PersonTransactionsDialog({
                   const cat = t.category_id ? catById.get(t.category_id) : undefined;
                   const tag = tagFor(t);
                   const share = shareFor(t);
+                  const owe = tag.tone === "owe"; // you owe them on this one
+                  // Lead with this person's share on a split (full expense sits
+                  // just below); otherwise the whole amount is theirs.
+                  const primaryValue = share != null ? -Math.abs(share) : signed(t);
                   return (
                     <div key={t.id} className="flex items-center gap-3 py-2.5">
                       <div className="min-w-0 flex-1">
@@ -155,8 +159,8 @@ export function PersonTransactionsDialog({
                               variant="outline"
                               className={cn(
                                 "shrink-0 text-[10px]",
-                                tag.tone === "owed" && "text-positive",
-                                tag.tone === "owe" && "text-negative",
+                                tag.tone === "owe" && "text-positive",
+                                tag.tone === "owed" && "text-negative",
                               )}
                             >
                               {tag.label}
@@ -177,10 +181,15 @@ export function PersonTransactionsDialog({
                         </div>
                       </div>
                       <div className="shrink-0 text-right">
-                        <Money value={signed(t)} cents colored className="text-sm font-semibold" />
+                        <Money
+                          value={primaryValue}
+                          cents
+                          colored={!owe}
+                          className={cn("text-sm font-semibold", owe && "text-positive")}
+                        />
                         {share != null ? (
                           <div className="text-[10px] text-muted-foreground tnum">
-                            their share {fmtMoney(share, { cents: true })}
+                            of {fmtMoney(t.amount, { cents: true })}
                           </div>
                         ) : null}
                       </div>
