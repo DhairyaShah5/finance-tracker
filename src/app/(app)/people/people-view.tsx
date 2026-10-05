@@ -36,12 +36,21 @@ import { StatCard } from "@/components/stat-card";
 import { Money } from "@/components/money";
 import { sumOwed, sumOwedByMe, type DebtorBalance, type CreditorBalance } from "@/lib/calc";
 import { fmtMoney } from "@/lib/format";
-import type { AccountRow, CategoryRow, DebtorRow, CreditorRow } from "@/lib/database.types";
+import type {
+  AccountRow,
+  CategoryRow,
+  DebtorRow,
+  CreditorRow,
+  TransactionRow,
+  TransactionDebtorRow,
+} from "@/lib/database.types";
 import { useReadOnly } from "@/components/read-only-context";
 import { DebtorDialog } from "./debtor-dialog";
 import { SettleDialog } from "./settle-dialog";
 import { CreditorDialog } from "./creditor-dialog";
 import { RepayDialog } from "./repay-dialog";
+import { PersonTransactionsDialog } from "./person-transactions-dialog";
+import type { TxnLookups } from "../transactions/transaction-dialog";
 import { deleteDebtor, deleteCreditor } from "./actions";
 
 const VIEW_ONLY = "View only - sign in to make changes.";
@@ -65,6 +74,9 @@ export function PeopleView({
   debtorBalances,
   creditorBalances,
   derivedNotes,
+  peopleTxns,
+  debtorLinks,
+  lookups,
   accounts,
   categories,
 }: {
@@ -72,6 +84,12 @@ export function PeopleView({
   creditorBalances: CreditorBalance[];
   /** Live note per person (by normalized name), derived from open items. */
   derivedNotes: Record<string, string>;
+  /** Every transaction tied to each person (by normalized name), newest first. */
+  peopleTxns: Record<string, TransactionRow[]>;
+  /** Split slices, so the embedded editor can rebuild a split. */
+  debtorLinks: TransactionDebtorRow[];
+  /** Lookups for the embedded Add/Edit transaction dialog. */
+  lookups: TxnLookups;
   accounts: AccountRow[];
   categories: CategoryRow[];
 }) {
@@ -89,6 +107,23 @@ export function PeopleView({
   const [editingCreditor, setEditingCreditor] = React.useState<CreditorRow | null>(null);
   const [repayOpen, setRepayOpen] = React.useState(false);
   const [repaying, setRepaying] = React.useState<CreditorBalance | null>(null);
+
+  // Per-person drill-down modal (the transactions behind the total).
+  const [viewing, setViewing] = React.useState<Person | null>(null);
+  const [viewOpen, setViewOpen] = React.useState(false);
+  const linksByTxn = React.useMemo(() => {
+    const m = new Map<string, { debtor_id: string; share: number }[]>();
+    for (const l of debtorLinks) {
+      const arr = m.get(l.transaction_id);
+      if (arr) arr.push({ debtor_id: l.debtor_id, share: l.share });
+      else m.set(l.transaction_id, [{ debtor_id: l.debtor_id, share: l.share }]);
+    }
+    return m;
+  }, [debtorLinks]);
+  function openPerson(p: Person) {
+    setViewing(p);
+    setViewOpen(true);
+  }
 
   const owed = sumOwed(debtorBalances);
   const oweThem = sumOwedByMe(creditorBalances);
@@ -166,6 +201,10 @@ export function PeopleView({
     });
   }
 
+  // Re-resolve the open person from the fresh list by key, so the modal's header
+  // and transaction list stay current after an in-modal add/edit/delete refresh.
+  const viewingFresh = viewing ? people.find((p) => p.key === viewing.key) ?? viewing : null;
+
   // People with a live balance stay up top; anyone fully squared up drops to the
   // "Friends" section below so the main list only shows who still owes whom.
   const active = people.filter((p) => p.owed > 0.005 || p.oweThem > 0.005);
@@ -182,7 +221,12 @@ export function PeopleView({
     const openSettle = () => guard(() => { if (p.debtor) { setSettling({ debtor: p.debtor, outstanding: p.owed }); setSettleOpen(true); } });
     const openRepay = () => guard(() => { if (p.creditor) { setRepaying({ creditor: p.creditor, outstanding: p.oweThem }); setRepayOpen(true); } });
     return (
-      <TableRow key={p.key}>
+      <TableRow
+        key={p.key}
+        onClick={() => openPerson(p)}
+        className="cursor-pointer"
+        title="View transactions"
+      >
         <TableCell className="font-medium">{p.name}</TableCell>
         <TableCell className="hidden max-w-[32ch] truncate text-sm text-muted-foreground sm:table-cell">
           {p.note?.trim() ? p.note : "-"}
@@ -199,7 +243,7 @@ export function PeopleView({
             <div className="text-xs text-muted-foreground">you owe</div>
           ) : null}
         </TableCell>
-        <TableCell>
+        <TableCell onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center justify-end gap-1">
             {primary === "settle" ? (
               <Button variant="outline" size="sm" className="h-7 gap-1.5" onClick={openSettle}>
@@ -382,6 +426,14 @@ export function PeopleView({
         creditor={repaying?.creditor ?? null}
         owed={repaying?.outstanding ?? 0}
         accounts={accounts}
+      />
+      <PersonTransactionsDialog
+        open={viewOpen}
+        onOpenChange={setViewOpen}
+        person={viewingFresh ? { name: viewingFresh.name, net: viewingFresh.net, debtorId: viewingFresh.debtor?.id ?? null } : null}
+        transactions={viewingFresh ? peopleTxns[viewingFresh.key] ?? [] : []}
+        lookups={lookups}
+        linksByTxn={linksByTxn}
       />
     </div>
   );
