@@ -145,10 +145,16 @@ export function PersonTransactionsDialog({
                   const cat = t.category_id ? catById.get(t.category_id) : undefined;
                   const tag = tagFor(t);
                   const share = shareFor(t);
-                  const owe = tag.tone === "owe"; // you owe them on this one
-                  // Lead with this person's share on a split (full expense sits
-                  // just below); otherwise the whole amount is theirs.
-                  const primaryValue = share != null ? -Math.abs(share) : signed(t);
+                  const owed = tag.tone === "owed"; // they owe you: your money, coming back
+                  const owe = tag.tone === "owe"; // you owe them: a liability
+                  // In your favor (they owe you) reads green and +; what you owe
+                  // reads red and -. Splits lead with this person's share (the
+                  // full expense sits just below).
+                  const primaryValue = owed
+                    ? Math.abs(share ?? t.amount)
+                    : owe
+                      ? -Math.abs(t.amount)
+                      : signed(t);
                   return (
                     <div key={t.id} className="flex items-center gap-3 py-2.5">
                       <div className="min-w-0 flex-1">
@@ -159,8 +165,8 @@ export function PersonTransactionsDialog({
                               variant="outline"
                               className={cn(
                                 "shrink-0 text-[10px]",
-                                tag.tone === "owe" && "text-positive",
-                                tag.tone === "owed" && "text-negative",
+                                tag.tone === "owed" && "text-positive",
+                                tag.tone === "owe" && "text-negative",
                               )}
                             >
                               {tag.label}
@@ -184,8 +190,9 @@ export function PersonTransactionsDialog({
                         <Money
                           value={primaryValue}
                           cents
-                          colored={!owe}
-                          className={cn("text-sm font-semibold", owe && "text-positive")}
+                          sign
+                          colored={!owed && !owe}
+                          className={cn("text-sm font-semibold", owed && "text-positive", owe && "text-negative")}
                         />
                         {share != null ? (
                           <div className="text-[10px] text-muted-foreground tnum">
