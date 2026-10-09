@@ -697,8 +697,15 @@ export function accountActivity(
   accounts: AccountRow[],
   categories?: Pick<CategoryRow, "id" | "linked_account_id">[],
 ): AccountActivity[] {
+  // A "friend paid for me" pair (borrow + expense) is a friend's money, not any
+  // account of yours, so it must never move a bank balance - even if its two
+  // halves were later edited to different amounts and no longer cancel. Drop both
+  // halves from every per-account tally. (The spending still counts via
+  // reconcile()/myAmount(); the liability still counts via outstandingPayable().)
+  const skip = creditorPaidPairIds(txns);
   const agg = new Map<string, { inflow: number; outflow: number; delta: number }>();
   for (const t of txns) {
+    if (skip.has(t.id)) continue;
     const cur = agg.get(t.account_id) ?? { inflow: 0, outflow: 0, delta: 0 };
     // A per-account view is a bank statement: every credit and debit on the
     // account counts - transfers included - so opening_balance + inflow − outflow
@@ -717,6 +724,7 @@ export function accountActivity(
   const linkOf = new Map((categories ?? []).map((c) => [c.id, c.linked_account_id]));
   if (categories?.length) {
     for (const t of txns) {
+      if (skip.has(t.id)) continue;
       if (t.direction !== "outflow" || t.is_transfer || !t.category_id) continue;
       const dest = linkOf.get(t.category_id);
       if (!dest) continue;
