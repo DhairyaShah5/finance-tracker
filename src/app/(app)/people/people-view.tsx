@@ -251,7 +251,7 @@ export function PeopleView({
               </Button>
             ) : primary === "repay" ? (
               <Button variant="outline" size="sm" className="h-7 gap-1.5" onClick={openRepay}>
-                <HandCoins className="size-3.5" /> Pay back
+                <HandCoins className="size-3.5" /> Settle up
               </Button>
             ) : (
               <span className="rounded-full bg-secondary px-2 py-0.5 text-xs text-positive">Settled</span>
@@ -270,7 +270,7 @@ export function PeopleView({
                 ) : null}
                 {canRepay ? (
                   <DropdownMenuItem onClick={openRepay}>
-                    <HandCoins className="size-4" /> Pay back{both ? " (you owe them)" : ""}
+                    <HandCoins className="size-4" /> Settle up{both ? " (you owe them)" : ""}
                   </DropdownMenuItem>
                 ) : null}
                 {canSettle || canRepay ? <DropdownMenuSeparator /> : null}

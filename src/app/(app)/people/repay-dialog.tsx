@@ -63,7 +63,7 @@ export function RepayDialog({
   function submit() {
     if (!creditor) return;
     if (amt <= 0) {
-      toast.error("Enter an amount to repay.");
+      toast.error("Enter an amount to settle.");
       return;
     }
     if (!accountId) {
@@ -97,7 +97,7 @@ export function RepayDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Pay back{creditor ? ` ${creditor.name}` : ""}</DialogTitle>
+          <DialogTitle>Settle up{creditor ? ` with ${creditor.name}` : ""}</DialogTitle>
           <DialogDescription>
             {creditor ? `You currently owe ${creditor.name} ${fmtMoney(owed, { cents: true })}.` : ""} Record the
             money you paid them.
@@ -170,7 +170,7 @@ export function RepayDialog({
             Cancel
           </Button>
           <Button onClick={submit} disabled={pending || amt <= 0}>
-            {pending ? "Saving…" : "Pay back"}
+            {pending ? "Settling…" : "Settle up"}
           </Button>
         </DialogFooter>
       </DialogContent>
