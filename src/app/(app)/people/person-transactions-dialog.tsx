@@ -35,6 +35,9 @@ export type PersonInfo = { name: string; net: number; debtorId: string | null };
 function tagFor(t: TransactionRow): { label: string; tone: "owed" | "owe" | "neutral" } {
   if (t.is_transfer && t.direction === "inflow" && t.reimburses_id) return { label: "They repaid you", tone: "neutral" };
   if (t.is_transfer && t.direction === "outflow" && t.repays_id) return { label: "You repaid", tone: "neutral" };
+  // Net settle-up cash moves carry creditor_id/debtor_id but no repays/reimburses link.
+  if (t.is_transfer && t.direction === "outflow" && t.creditor_id && !t.repays_id) return { label: "Settled up", tone: "neutral" };
+  if (t.is_transfer && t.direction === "inflow" && t.debtor_id && !t.reimburses_id) return { label: "Settled up", tone: "neutral" };
   if (t.is_transfer && t.direction === "inflow" && t.creditor_id) return { label: "You borrowed", tone: "owe" };
   if (!t.is_transfer && t.creditor_id && t.repays_id) return { label: "They paid for you", tone: "owe" };
   if (!t.is_transfer && t.direction === "outflow") return { label: "Owed to you", tone: "owed" };

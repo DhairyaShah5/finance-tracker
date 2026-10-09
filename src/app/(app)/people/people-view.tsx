@@ -49,6 +49,7 @@ import { DebtorDialog } from "./debtor-dialog";
 import { SettleDialog } from "./settle-dialog";
 import { CreditorDialog } from "./creditor-dialog";
 import { RepayDialog } from "./repay-dialog";
+import { NetSettleDialog, type NetSettleTarget } from "./net-settle-dialog";
 import { PersonTransactionsDialog } from "./person-transactions-dialog";
 import type { TxnLookups } from "../transactions/transaction-dialog";
 import { deleteDebtor, deleteCreditor } from "./actions";
@@ -107,6 +108,10 @@ export function PeopleView({
   const [editingCreditor, setEditingCreditor] = React.useState<CreditorRow | null>(null);
   const [repayOpen, setRepayOpen] = React.useState(false);
   const [repaying, setRepaying] = React.useState<CreditorBalance | null>(null);
+
+  // Net settle-up (for someone on both sides at once).
+  const [netOpen, setNetOpen] = React.useState(false);
+  const [netTarget, setNetTarget] = React.useState<NetSettleTarget | null>(null);
 
   // Per-person drill-down modal (the transactions behind the total).
   const [viewing, setViewing] = React.useState<Person | null>(null);
@@ -216,10 +221,15 @@ export function PeopleView({
     const both = !!p.debtor && !!p.creditor;
     const canSettle = p.owed > 0.005; // they owe you -> settle up
     const canRepay = p.oweThem > 0.005; // you owe them -> pay back
-    // With both sides live, lead with whichever the net leans toward.
-    const primary = canSettle && canRepay ? (p.net >= 0 ? "settle" : "repay") : canSettle ? "settle" : canRepay ? "repay" : null;
+    const twoWay = canSettle && canRepay; // owes you AND you owe them -> settle the net
+    // Two-way squares up the net; otherwise it's a plain one-side settle.
+    const primary = twoWay ? "net" : canSettle ? "settle" : canRepay ? "repay" : null;
     const openSettle = () => guard(() => { if (p.debtor) { setSettling({ debtor: p.debtor, outstanding: p.owed }); setSettleOpen(true); } });
     const openRepay = () => guard(() => { if (p.creditor) { setRepaying({ creditor: p.creditor, outstanding: p.oweThem }); setRepayOpen(true); } });
+    const openNet = () => guard(() => {
+      setNetTarget({ name: p.name, debtorId: p.debtor?.id ?? null, creditorId: p.creditor?.id ?? null, owed: p.owed, oweThem: p.oweThem });
+      setNetOpen(true);
+    });
     return (
       <TableRow
         key={p.key}
@@ -245,7 +255,11 @@ export function PeopleView({
         </TableCell>
         <TableCell onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center justify-end gap-1">
-            {primary === "settle" ? (
+            {primary === "net" ? (
+              <Button variant="outline" size="sm" className="h-7 gap-1.5" onClick={openNet}>
+                <HandCoins className="size-3.5" /> Settle up
+              </Button>
+            ) : primary === "settle" ? (
               <Button variant="outline" size="sm" className="h-7 gap-1.5" onClick={openSettle}>
                 <HandCoins className="size-3.5" /> Settle up
               </Button>
@@ -263,6 +277,11 @@ export function PeopleView({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                {twoWay ? (
+                  <DropdownMenuItem onClick={openNet}>
+                    <HandCoins className="size-4" /> Settle up the net
+                  </DropdownMenuItem>
+                ) : null}
                 {canSettle ? (
                   <DropdownMenuItem onClick={openSettle}>
                     <HandCoins className="size-4" /> Settle up{both ? " (they owe you)" : ""}
@@ -425,6 +444,12 @@ export function PeopleView({
         onOpenChange={setRepayOpen}
         creditor={repaying?.creditor ?? null}
         owed={repaying?.outstanding ?? 0}
+        accounts={accounts}
+      />
+      <NetSettleDialog
+        open={netOpen}
+        onOpenChange={setNetOpen}
+        target={netTarget}
         accounts={accounts}
       />
       <PersonTransactionsDialog

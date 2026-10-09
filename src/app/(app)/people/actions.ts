@@ -520,3 +520,142 @@ export async function repayCreditor(input: RepayInput): Promise<ActionResult> {
   revalidate();
   return { ok: true };
 }
+
+// ===========================================================================
+// Settle up the NET with a person who is on both sides (they owe you AND you
+// owe them). Squares both sides to zero and moves only the difference in cash:
+//   - Receivables (what they owe you) are marked paid back - no cash inflow,
+//     because the front offsets what you owe. ("owed to me" -> 0 for them.)
+//   - Borrows (what you owe them) are marked repaid - no cash outflow for the
+//     offset portion. ("I owe" -> 0 for them.)
+//   - The net difference is the ONE real bank movement: you pay it (outflow) or
+//     they pay you (inflow). That is the only line the bank statement will show,
+//     so reconciliation stays correct.
+// ===========================================================================
+const settleUpSchema = z.object({
+  debtor_id: z.string().uuid().nullable().optional(),
+  creditor_id: z.string().uuid().nullable().optional(),
+  account_id: z.string().uuid().nullable().optional(),
+  txn_date: z.string().min(10).nullable().optional(),
+  description: z.string().trim().nullable().optional(),
+});
+
+export type SettleUpInput = z.input<typeof settleUpSchema>;
+
+export async function settleUpBalance(input: SettleUpInput): Promise<ActionResult> {
+  const parsed = settleUpSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
+  const { supabase, user } = await authed();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const d = parsed.data;
+  if (!d.debtor_id && !d.creditor_id) return { ok: false, error: "Nothing to settle." };
+
+  // The person's name (for the cash line's label).
+  let name = "someone";
+  if (d.debtor_id) {
+    const { data } = await supabase.from("debtors").select("name").eq("id", d.debtor_id).eq("user_id", user.id).maybeSingle();
+    if (data) name = data.name;
+  }
+  if (name === "someone" && d.creditor_id) {
+    const { data } = await supabase.from("creditors").select("name").eq("id", d.creditor_id).eq("user_id", user.id).maybeSingle();
+    if (data) name = data.name;
+  }
+
+  // ---- What they owe you: legacy fronted expenses + their split slices. ----
+  const legacy = d.debtor_id
+    ? (await supabase.from("transactions").select("*").eq("user_id", user.id).eq("debtor_id", d.debtor_id).eq("direction", "outflow").eq("is_transfer", false).eq("reimbursable", true)).data ?? []
+    : [];
+  const links = d.debtor_id
+    ? (await supabase.from("transaction_debtors").select("*").eq("user_id", user.id).eq("debtor_id", d.debtor_id)).data ?? []
+    : [];
+  const linkTxnIds = [...new Set(links.map((l) => l.transaction_id))];
+  const linkTxns = linkTxnIds.length
+    ? (await supabase.from("transactions").select("*").eq("user_id", user.id).in("id", linkTxnIds)).data ?? []
+    : [];
+  const linkTxnById = new Map<string, TransactionRow>(linkTxns.map((t) => [t.id, t]));
+
+  // ---- What you owe them: open borrows. ----
+  const borrows = d.creditor_id
+    ? (await supabase.from("transactions").select("*").eq("user_id", user.id).eq("creditor_id", d.creditor_id).eq("direction", "inflow").eq("is_transfer", true).is("repays_id", null)).data ?? []
+    : [];
+
+  let receivable = 0;
+  for (const e of legacy) receivable += outstandingReceivable(e);
+  for (const l of links) receivable += Math.max(0, round2(l.share - l.settled_amount));
+  receivable = round2(receivable);
+  let payable = 0;
+  for (const b of borrows) payable += outstandingPayable(b);
+  payable = round2(payable);
+
+  if (receivable <= 0.005 && payable <= 0.005) return { ok: false, error: "Nothing to settle." };
+  const net = round2(payable - receivable); // > 0: you pay; < 0: they pay you
+  if (Math.abs(net) > 0.005 && !d.account_id) {
+    return { ok: false, error: "Pick an account for the difference." };
+  }
+  const when = d.txn_date || new Date().toISOString().slice(0, 10);
+  const label = d.description?.trim() || null;
+
+  // ---- Clear what they owe you (offset against what you owe them; no cash). ----
+  for (const e of legacy) {
+    if (outstandingReceivable(e) <= 0.005) continue;
+    const owed = round2(e.amount - myAmount(e));
+    const { error } = await supabase.from("transactions").update({ reimbursed_amount: owed, reimbursed: true }).eq("id", e.id).eq("user_id", user.id);
+    if (error) return { ok: false, error: error.message };
+  }
+  for (const l of links) {
+    const out = round2(l.share - l.settled_amount);
+    if (out <= 0.005) continue;
+    const { error: lErr } = await supabase.from("transaction_debtors").update({ settled_amount: round2(l.share) }).eq("id", l.id).eq("user_id", user.id);
+    if (lErr) return { ok: false, error: lErr.message };
+    const t = linkTxnById.get(l.transaction_id);
+    if (t) {
+      const newReimbursed = round2((t.reimbursed_amount ?? 0) + out);
+      const owed = round2(t.amount - myAmount(t));
+      const { error } = await supabase.from("transactions").update({ reimbursed_amount: newReimbursed, reimbursed: newReimbursed >= owed - 0.005 }).eq("id", t.id).eq("user_id", user.id);
+      if (error) return { ok: false, error: error.message };
+      t.reimbursed_amount = newReimbursed; // accumulate if several of their slices share a txn
+    }
+  }
+
+  // ---- Clear what you owe them (cash moves only for the net, below). ----
+  for (const b of borrows) {
+    if (outstandingPayable(b) <= 0.005) continue;
+    const { error } = await supabase.from("transactions").update({ repaid_amount: round2(b.amount) }).eq("id", b.id).eq("user_id", user.id);
+    if (error) return { ok: false, error: error.message };
+  }
+
+  // ---- The net difference: the one real bank movement. ----
+  if (net > 0.005) {
+    const row: TxnInsert = {
+      user_id: user.id,
+      txn_date: when,
+      account_id: d.account_id!,
+      amount: net,
+      direction: "outflow",
+      is_transfer: true, // settling a debt, not spending
+      creditor_id: d.creditor_id ?? null,
+      description: label || `Settled up with ${name}`,
+      notes: `Net settle-up: you paid the ${net.toFixed(2)} difference; both sides cleared.`,
+    };
+    const { error } = await supabase.from("transactions").insert(row);
+    if (error) return { ok: false, error: error.message };
+  } else if (net < -0.005) {
+    const row: TxnInsert = {
+      user_id: user.id,
+      txn_date: when,
+      account_id: d.account_id!,
+      amount: -net,
+      direction: "inflow",
+      is_transfer: true, // money returning, not income
+      debtor_id: d.debtor_id ?? null,
+      description: label || `Settled up with ${name}`,
+      notes: `Net settle-up: they paid you the ${(-net).toFixed(2)} difference; both sides cleared.`,
+    };
+    const { error } = await supabase.from("transactions").insert(row);
+    if (error) return { ok: false, error: error.message };
+  }
+  // net ~ 0: both sides cancel exactly, no cash needed.
+
+  revalidate();
+  return { ok: true };
+}
