@@ -154,6 +154,10 @@ export function TransactionsView({
         // its expense line stands in for the whole thing. It stays in activeTxns
         // so the running balance math still sees the net-zero pair.
         if (paidForMeBorrowIds.has(t.id)) return false;
+        // A creditor-paid expense is a friend's money, not any account of yours
+        // (it nets to zero on the account it's filed under), so it has no place in
+        // a single account's view - it only belongs in the full ledger.
+        if (account !== "all" && !t.is_transfer && t.creditor_id && t.repays_id) return false;
         if (q) {
           // Match the description OR the amount, so you can find a transaction by
           // its number when you don't remember what you called it. A numeric query
