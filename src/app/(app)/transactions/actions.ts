@@ -367,8 +367,40 @@ export async function updateTransaction(id: string, input: TransactionInput): Pr
     .eq("id", id)
     .eq("user_id", user.id);
   if (error) return { ok: false, error: error.message };
+  await syncCreditorBorrow(supabase, user.id, id);
   revalidate();
   return { ok: true };
+}
+
+/**
+ * Keep a "friend paid for me" expense and its offsetting borrow in lockstep. The
+ * expense is what you consumed; the borrow is what you owe - for a friend-paid
+ * item they're the same thing, so editing the expense (amount, date, account)
+ * must move the borrow too. Otherwise the two halves drift apart, the pair stops
+ * cancelling on the account, and you end up owing more than you consumed.
+ */
+async function syncCreditorBorrow(
+  supabase: Awaited<ReturnType<typeof authed>>["supabase"],
+  userId: string,
+  txnId: string,
+): Promise<void> {
+  const { data: exp } = await supabase
+    .from("transactions")
+    .select("amount, txn_date, account_id, description, creditor_id, repays_id, is_transfer")
+    .eq("id", txnId)
+    .eq("user_id", userId)
+    .single();
+  if (!exp || exp.is_transfer || !exp.creditor_id || !exp.repays_id) return;
+  await supabase
+    .from("transactions")
+    .update({
+      amount: exp.amount,
+      txn_date: exp.txn_date,
+      account_id: exp.account_id,
+      description: exp.description,
+    })
+    .eq("id", exp.repays_id)
+    .eq("user_id", userId);
 }
 
 export async function deleteTransaction(id: string): Promise<ActionResult> {
