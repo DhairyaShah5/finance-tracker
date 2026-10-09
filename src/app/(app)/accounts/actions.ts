@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
 import { ACCOUNT_TYPES } from "@/lib/defaults";
-import { accountActivity } from "@/lib/calc";
+import { accountActivity, creditorPaidPairIds } from "@/lib/calc";
 
 type TxnInsert = Database["public"]["Tables"]["transactions"]["Insert"];
 
@@ -529,7 +529,13 @@ export async function reconcileAccount(input: ReconcileInput): Promise<Reconcile
   ]);
   const acct = acctRes.data;
   if (!acct) return { ok: false, error: "Account not found." };
-  const txns = txnsRes.data ?? [];
+  // A "friend paid for me" pair (borrow + expense) is a friend's money, not this
+  // account's - it never hits the real bank statement. Drop both halves before
+  // measuring the balance or listing the period, so a bank reconciliation only
+  // ever compares against transactions that actually moved this account.
+  const allTxns = txnsRes.data ?? [];
+  const skipIds = creditorPaidPairIds(allTxns);
+  const txns = allTxns.filter((t) => !skipIds.has(t.id));
   const cats = catsRes.data ?? [];
   const linkedCatIds = new Set(cats.filter((c) => c.linked_account_id === acct.id).map((c) => c.id));
 

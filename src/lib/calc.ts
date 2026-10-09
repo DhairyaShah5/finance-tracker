@@ -824,6 +824,26 @@ export function sumOwed(balances: DebtorBalance[]): number {
   return round2(balances.reduce((s, b) => s + b.outstanding, 0));
 }
 
+/**
+ * Both halves of every "a creditor paid for something of mine" pair: the expense
+ * outflow (not a transfer, carries creditor_id + repays_id) and the offsetting
+ * borrow inflow it points to. A friend's money paid for it, so the pair nets to
+ * zero on whatever account it's filed under and never appears on your real bank
+ * statement - so per-account views and bank reconciliation leave both out.
+ */
+export function creditorPaidPairIds(
+  txns: Pick<TransactionRow, "id" | "is_transfer" | "creditor_id" | "repays_id">[],
+): Set<string> {
+  const ids = new Set<string>();
+  for (const t of txns) {
+    if (!t.is_transfer && t.creditor_id && t.repays_id) {
+      ids.add(t.id);
+      ids.add(t.repays_id);
+    }
+  }
+  return ids;
+}
+
 // ---------------------------------------------------------------------------
 // Creditors - people YOU owe. The exact mirror of debtors: a creditor's balance
 // is DERIVED from the ledger, never hand-typed. The debt-creating event is a
